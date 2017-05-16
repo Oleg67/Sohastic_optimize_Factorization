@@ -1,0 +1,11 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = code@vpnrhode:utils.git
+	branch = master
+	commit = bacc10c49474ab05f0835ed3cf7bf2de4c2ec58b
+	parent = 5ff8e5d84478fe7bb43f79e851b131d9d4c6e318
+	cmdver = 0.2.2
