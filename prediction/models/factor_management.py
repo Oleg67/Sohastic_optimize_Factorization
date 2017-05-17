@@ -33,8 +33,6 @@ class Factor(object):
 
     def set_flags(self, name, anonymized):
         hk, pf = HIGH_KURTOSIS_FACTORS_hashed, PRICE_FACTORS_hashed
-        if not anonymized:
-            from ..factors.factor_attributes import HIGH_KURTOSIS_FACTORS as hk, PRICE_FACTORS as pf
         self.high_kurtosis = name in hk
         self.isa_price = name in pf
 
