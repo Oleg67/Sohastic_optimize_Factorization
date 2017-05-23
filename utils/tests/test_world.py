@@ -29,6 +29,7 @@ def test_country():
     assert Country('Germany').value == 'DEU'
     assert Country('GBR').value == 'GBR'
     assert Country('IR').value == 'IRL'
+    assert Country('GB').name == 'United Kingdom'
     pytest.raises(ValueError, Country, 'Nosuchcountry')
 
 

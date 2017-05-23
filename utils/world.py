@@ -116,21 +116,14 @@ class Country(Codified):
             self._value = self.exceptions[code]
             return
 
-        if len(code) == 2:
-            searchkey = 'alpha2'
-        elif len(code) == 3:
-            searchkey = 'alpha3'
-        else:
-            searchkey = 'name'
-            code = code.capitalize()
         try:
-            self._value = pycountry.countries.get(**{searchkey: code}).alpha3
-        except KeyError:
+            self._value = pycountry.countries.lookup(code).alpha_3
+        except LookupError:
             raise ValueError("Invalid country code: %s" % code)
 
     @property
     def name(self):
-        return pycountry.countries.get(alpha3=self._value).name
+        return pycountry.countries.get(alpha_3=self._value).name
 
     country = name
 
