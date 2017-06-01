@@ -32,7 +32,7 @@ fieldname_list_provided = list(chain(fieldnames_ids, fieldnames_event, fieldname
 
 fieldtypes = dict(obstacle='S1', sex='S1', race_class='S2', going='S5', name='S20', result='int8', draw='int8',
                   morning_est_times='float64', morning_prob='float32', morning_prob_times='float64', thb_est='float32',
-                  tipsters='int8', napstats_tipssum='int8', ones='int8')
+                  tipsters='int8', napstats_tipssum='int8', ones='int8', condition='S30')
 for fieldname in ['jockey', 'trainer', 'course', 'dam', 'sire', 'strata', 'bfid', 'bdid'] + fieldnames_ids:
     fieldtypes[fieldname] = 'int64'
 
