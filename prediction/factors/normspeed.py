@@ -8,29 +8,30 @@ from target import FactorTarget
 
 class NormSpeed(FactorTarget):
     provided = ['norm_speed']
-    required = ['speed', 'age', 'distance', 'sex', 'obstacle', 'going', 'course']
+    required = ['speed', 'age', 'distance', 'wind_speed', 'temperature', 'sex', 'obstacle', 'going', 'course']
 
     def run(self, av, sel, verbose=False, *args, **kwargs):
-        X, y, missing = regression_data(y=[av['speed']], Xnum=[av['age'], av['distance']],
+        X, y, missing = regression_data(y=[av['speed']],
+                                        Xnum=[av['age'], av['distance'], av['wind_speed'], av['temperature']],
                                         Xcat=[av['sex'], av['obstacle'], av['going']])
-        y = pd.Series(y, columns='speed')
-        fixed = pd.DataFrame(X[:, 4], columns=['age', 'distance', 'sex1', 'sex2'])
+        y = pd.DataFrame(y, columns='speed')
+        fixed = pd.DataFrame(X[:, 6], columns=['age', 'distance', 'wind_speed', 'temperature', 'sex1', 'sex2'])
         random = pd.DataFrame({'obstacle': av['obstacle'], 'going': av['going']})
         data = pd.concat([y, fixed, random], axis=1)[~missing]
         train_data, test_data = train_test_split(data, test_size=0.3)
 
-        models = {'mod1': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'obstacle',
-                           're_formula': "~age"},
-                  'mod2': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'obstacle',
-                           're_formula': "~distance"},
-                  'mod3': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'obstacle',
-                           're_formula': "~age+distance"},
-                  'mod4': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'going',
-                           're_formula': "~age"},
-                  'mod5': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'going',
-                           're_formula': "~distance"},
-                  'mod6': {'formula': "speed ~ age + distance + sex1 + sex2", 'groups': 'going',
-                           're_formula': "~age+distance"}
+        models = {'mod1': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'obstacle', 're_formula': "~age"},
+                  'mod2': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'obstacle', 're_formula': "~distance"},
+                  'mod3': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'obstacle', 're_formula': "~age+distance"},
+                  'mod4': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'going', 're_formula': "~age"},
+                  'mod5': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'going', 're_formula': "~distance"},
+                  'mod6': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                           'groups': 'going', 're_formula': "~age+distance"}
                   }
 
         model_fits = fit_lme(models, train_data)
