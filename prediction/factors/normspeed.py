@@ -24,14 +24,7 @@ class NormSpeed(FactorTarget):
         train_data, test_data = train_test_split(data, test_size=0.3)
 
         models = {'mod1': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'obstacle', 're_formula': "~age"},
-                  'mod2': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'going', 're_formula': "~age"},
-                  'mod3': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'going', 're_formula': "~distance"},
-                  'mod4': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'going', 're_formula': "~age+distance"}
-                  }
+                           'groups': 'obstacle', 're_formula': "~age"}}
 
         model_fits = fit_lme(models, train_data)
         model_rmse, model_codes = modelcompare_test(test_data, models=model_fits, measure='rmse')
