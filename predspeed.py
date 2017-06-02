@@ -8,7 +8,7 @@ from prediction.models.model_parameters import ModelParameters
 from prediction.models.parameters import factor_build_end
 from prediction.tools.plotting import varinfo
 from utils import timestamp, YEAR
-from dinko.utils.regressiontools import regression_data, rmse
+from prediction.tools.regressiontools import regression_data, rmse
 
 av = ArrayView.from_file('../datadev/brain_final2cut.av.bcolz')
 av_w = ArrayView.from_file('../datadev/weather.av.bcolz')
@@ -33,6 +33,8 @@ X_build, y_build = X[~missing & pars.build_mask, :], y[~missing & pars.build_mas
 X_test, y_test = X[~missing & pars.is1, :], y[~missing & pars.is1]
 df_build, df_test = df[~missing & pars.build_mask], df[~missing & pars.is1]
 
+df_build.to_csv('../build.csv', index=False)
+df_test.to_csv('../test.csv', index=False)
 
 # Fit the full linear regression model
 lm_full = sm.OLS(y_build, X_build).fit()
@@ -108,7 +110,7 @@ for i in range(len(split) - 2):
                           lme_b, groups=lme_b["obstacle"]).fit()  # random intercept
         """Random intercept + slope"""
         lme2 = smf.mixedlm("speed ~ distance + age + wind_speed + temp + wind_direction",
-                        lme_b, groups=lme_b["obstacle"], re_formula="~distance").fit()
+                        lme_b, groups=lme_b["obstacle"], re_formula="~distance + age").fit()
         lme3 = smf.mixedlm("speed ~ distance + age + wind_speed + temp + wind_direction",
                           lme_b, groups=lme_b["obstacle"], re_formula="~age").fit()
         RMSE[i, 0] = rmse(y_t - lm1.predict(x_t[:, 0:2]))
