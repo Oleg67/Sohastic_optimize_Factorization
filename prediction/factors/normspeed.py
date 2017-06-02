@@ -3,19 +3,22 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 from utils.arrayview import ArrayView
 from prediction.models.model_parameters import ModelParameters
+from utils import YEAR
 from prediction.tools.regressiontools import regression_data, modelcompare_test, fit_lme
 from target import FactorTarget
 
 class NormSpeed(FactorTarget):
     provided = ['norm_speed']
-    required = ['speed', 'age', 'distance', 'wind_speed', 'temperature', 'sex', 'obstacle', 'going', 'course']
+    required = ['speed', 'distance', 'wind_speed', 'temperature', 'sex', 'obstacle', 'going', 'course',
+                'start_time', 'date_of_birth']
 
     def run(self, av, sel, verbose=False, *args, **kwargs):
+        age = np.floor((av.start_time - av.date_of_birth) / YEAR)
         X, y, missing = regression_data(y=[av['speed']],
-                                        Xnum=[av['age'], av['distance'], av['wind_speed'], av['temperature']],
+                                        Xnum=[age, av['distance'], av['wind_speed'], av['temperature']],
                                         Xcat=[av['sex'], av['obstacle'], av['going']])
-        y = pd.DataFrame(y, columns='speed')
-        fixed = pd.DataFrame(X[:, 6], columns=['age', 'distance', 'wind_speed', 'temperature', 'sex1', 'sex2'])
+        y = pd.DataFrame(y, columns=['speed'])
+        fixed = pd.DataFrame(X[:, 0:6], columns=['age', 'distance', 'wind_speed', 'temperature', 'sex1', 'sex2'])
         random = pd.DataFrame({'obstacle': av['obstacle'], 'going': av['going']})
         data = pd.concat([y, fixed, random], axis=1)[~missing]
         train_data, test_data = train_test_split(data, test_size=0.3)
@@ -23,14 +26,10 @@ class NormSpeed(FactorTarget):
         models = {'mod1': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
                            'groups': 'obstacle', 're_formula': "~age"},
                   'mod2': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'obstacle', 're_formula': "~distance"},
-                  'mod3': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
-                           'groups': 'obstacle', 're_formula': "~age+distance"},
-                  'mod4': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
                            'groups': 'going', 're_formula': "~age"},
-                  'mod5': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                  'mod3': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
                            'groups': 'going', 're_formula': "~distance"},
-                  'mod6': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
+                  'mod4': {'formula': "speed ~ age + distance + wind_speed + temperature + sex1 + sex2",
                            'groups': 'going', 're_formula': "~age+distance"}
                   }
 

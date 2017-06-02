@@ -37,14 +37,16 @@ def modelcompare_test(test_data, models, measure='rmse'):
     fits = models.keys()
     criterion = np.zeros(len(fits))
     for i in range(len(fits)):
-        criterion[i] = eval(measure)(test_data['y'] - models[fits[i]].predict(test_data))
+        criterion[i] = eval(measure)(test_data['speed'] - models[fits[i]].predict(test_data))
     return criterion, fits
 
 def fit_lme(models, data):
     """Fit mixed linear effect models"""
     model_fits = {}
-    for m in models:
-        model_fits[m] = smf.mixedlm(m['formula'], data, groups=data[m['groups']], re_formula=m['re_formula']).fit()
+    for m in models.keys():
+        model = models[m]
+        model_fits[m] = smf.mixedlm(model['formula'], data, groups=data[model['groups']],
+                                    re_formula=model['re_formula']).fit()
     return model_fits
 
 
