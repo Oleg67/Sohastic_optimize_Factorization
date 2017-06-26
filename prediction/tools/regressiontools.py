@@ -19,6 +19,19 @@ def regression_data(y=[], Xnum=[], Xnum_transform=[], Xcat=[], strata = None):
     print "\nNumber of observations: %d\nMissing: %d\nValid: %d" % (n_samples, np.sum(missing), np.sum(~missing))
     return X, y, missing
 
+def eval_models(models, evalScheme, trainSize, k_CV, targetVar, cost):
+    """
+    Evaluate the performance of one or more models
+    :param models:
+    :param evalScheme:
+    :param trainSize:
+    :param k_CV:
+    :param targetVar:
+    :param cost:
+    :return:
+    """
+
+
 def dummies(x):
     """Replace a categorical variable by a set of indicator variables"""
     missing = find_missing(x)

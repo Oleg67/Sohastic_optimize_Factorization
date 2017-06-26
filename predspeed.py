@@ -9,16 +9,20 @@ from prediction.models.parameters import factor_build_end
 from prediction.tools.plotting import varinfo
 from utils import timestamp, YEAR
 from prediction.tools.regressiontools import regression_data, rmse
+from prediction.factors.normspeed import NormSpeed
 
 av = ArrayView.from_file('../datadev/brain_final2cut.av.bcolz')
 av_w = ArrayView.from_file('../datadev/weather.av.bcolz')
 pars = ModelParameters(av, oos_start=factor_build_end+YEAR, depth=3, lmbd=10, verbose=True)
 
+
 # Extract variables
 vars = {'speed': av.speed, 'distance': av.distance, 'sex': av.sex, 'obstacle': av.obstacle,
         'going': av.going, 'course': av.course, 'wind_speed': av_w.wind_speed, 'temp': av_w.temperature,
         'wind_direction': av_w.wind_direction, 'humidity': av_w.humidity, 'pressure': av_w.pressure,
-        'condition': av_w.condition, 'age': np.floor((av.start_time - av.date_of_birth) / YEAR)}
+        'condition': av_w.condition, 'start_time': av.start_time, 'norm_speed': av.norm_speed,
+        'age': np.floor((av.start_time - av.date_of_birth) / YEAR), 'trainer': av['trainer'],
+        'jockey': av['jockey'], 'runner': av['runner_id']}
 
 '''After removing the missing values the first level of the going variable (AW) does not appear at all in the data so 
 I will remove it before I start the analysis. Wind speed has negative values and I will remove them.'''
@@ -26,13 +30,16 @@ vars['going'][vars['going'] == 'AW'] = ''
 vars['wind_speed'][vars['wind_speed'] < 0] = np.nan
 
 # Prepare data for regression
-X, y, missing = regression_data(y=[vars['speed']], Xnum = [vars['distance'], vars['age']],
-        Xcat=[vars['sex'], vars['obstacle'], vars['going']])
-df = pd.DataFrame({k: vars[k] for k in ('speed', 'distance', 'age', 'obstacle', 'going')})
-X_build, y_build = X[~missing & pars.build_mask, :], y[~missing & pars.build_mask]
-X_test, y_test = X[~missing & pars.is1, :], y[~missing & pars.is1]
-df_build, df_test = df[~missing & pars.build_mask], df[~missing & pars.is1]
+X, y, missing = regression_data(y=[vars['speed']], Xnum=[vars['distance'], vars['norm_speed'], vars['trainer'],
+                                                         vars['jockey'], vars['runner'], vars['start_time']],
+                                Xcat=[vars['obstacle'], vars['going']])
+df = pd.DataFrame({k: vars[k] for k in ('speed', 'distance',  'obstacle', 'going', 'norm_speed', 'trainer', 'jockey',
+                                        'runner', 'start_time')})
+df['build'] = ~missing & pars.build_mask
+df['test'] = ~missing & (pars.is1 | pars.oos)
+df_build, df_test = df[~missing & pars.build_mask], df[~missing & (pars.is1 | pars.oos)]
 
+df.to_csv('../data.csv', index=False)
 df_build.to_csv('../build.csv', index=False)
 df_test.to_csv('../test.csv', index=False)
 
