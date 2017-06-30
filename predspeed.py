@@ -15,6 +15,12 @@ av = ArrayView.from_file('../datadev/brain_final2cut.av.bcolz')
 av_w = ArrayView.from_file('../datadev/weather.av.bcolz')
 pars = ModelParameters(av, oos_start=factor_build_end+YEAR, depth=3, lmbd=10, verbose=True)
 
+df = pd.read_csv("../roll_normspeed.csv")
+av.prediction = df.prediction.values.flatten()
+av.residuals = df.residuals.values.flatten()
+av_new = av['prediction', 'residuals']
+av_new.dump('../datadev/roll_normspeed.av.bcolz')
+
 
 # Extract variables
 vars = {'speed': av.speed, 'distance': av.distance, 'sex': av.sex, 'obstacle': av.obstacle,
