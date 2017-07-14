@@ -3,12 +3,10 @@ General definition of a datasource for horse racing.
 '''
 import string
 
-from utils import Cache, Folder, get_logger, timestamp, HOUR, MINUTE
-from utils.database import EventConsistencyError, PersistentCookieJar
+from utils import Folder, get_logger, timestamp, HOUR, MINUTE
 from utils.errors import (ParsingError, ConnectionError, ValidationError,
                           RetriesExceeded, NotFound, NotAvailable)
-from utils.gutils.crawler import XMLCrawler, DEFAULT_HEADERS
-from utils.gutils import RLock, Timeout, with_timeout
+
 
 logger = get_logger(__package__)
 
@@ -44,20 +42,14 @@ class EventUpdater(object):
                 return
         self.update_failsafe(event, attribute=attribute, db=db, timeout=timeout)
 
-    def update_failsafe(self, event, attribute=None, db=None, mute=None, timeout=None):
-        if timeout is not None:
-            return with_timeout(timeout, self._update_failsafe, event, attribute=attribute, db=db, mute=mute)
-        else:
-            return self._update_failsafe(event, attribute=attribute, db=db, mute=mute)
-
     def _update_failsafe(self, event, attribute=None, db=None, mute=None):
         if mute is None:
             mute = set()
         runs_count = len(event.runs)
         try:
             self.update(event, attribute=attribute, db=db)
-        except (ConnectionError, ParsingError, EventConsistencyError, ValidationError,
-                RetriesExceeded, NotFound, NotAvailable, Timeout) as e:
+        except (ConnectionError, ParsingError, ValidationError,
+                RetriesExceeded, NotFound, NotAvailable) as e:
             if type(e) not in mute and not event.abandoned:
                 logger.warn("%d|%s: %s update: %s %s", event.id, event.short_description, type(self).__name__,
                             type(e).__name__, e)
@@ -108,17 +100,7 @@ class DataSource(EventUpdater):
 
     def __init__(self, basepath=None, cookiejar=None, **kwargs):
         self.path = Folder(basepath).getfolder(type(self).__name__.lower()) if basepath else None
-        self.crawler = self._init_crawler(cookiejar=cookiejar)
-        self._cache = Cache(100, HOUR)
-
-    def _init_crawler(self, cookiejar=None, ssl_options=None, concurrency=None):
-        return XMLCrawler(concurrency=concurrency or self.concurrency,
-                          headers=DEFAULT_HEADERS,
-                          cookiejar=cookiejar if cookiejar is not None else PersistentCookieJar(),
-                          network_timeout=30,
-                          connection_timeout=5,
-                          max_retries=2,
-                          ssl_options=ssl_options)
+        self.cache = dict()
 
     def available(self):
         """ Check availability of the data source by requesting the main page """
@@ -173,8 +155,6 @@ class AuthenticatedDataSource(DataSource):
         super(AuthenticatedDataSource, self).__init__(**kwargs)
         self.username = username
         self.password = password
-        self._login_lock = RLock()
-        self._login_assert_lock = RLock()
         self._login_status = False
         self._login_last_check = 0
 

@@ -24,11 +24,11 @@ import os
 import csv
 import collections
 import numpy as np
+import pandas as pd
 import shutil
 
 from utils import Folder, chunks, get_logger, timestamp, HOUR, DAY
 from utils.world import POUND, STONE, FURLONG
-from utils.parsing import Horsename
 from utils.errors import (ValidationError, NotFound, ParsingError, MultipleEntries)
 
 from .datasource import AuthenticatedDataSource
@@ -51,7 +51,7 @@ class Ukhr(AuthenticatedDataSource):
     runner_attributes = 'sex'
     run_attributes = 'ukhr_est', 'ukhr_value', 'ukhr_rtg', 'ukhr_jcky_rtg', 'ukhr_trnr_rtg', \
                     'weight', 'draw', 'result', 'jockey', 'trainer'
-    earliest_record = float(timestamp("2005-01-01"))
+    earliest_record = float(timestamp("2013-01-01"))
 
     renamed_fields = {'JockeyRating': 'ukhr_jcky_rtg',
                       'TrainerRating': 'ukhr_trnr_rtg',
@@ -130,22 +130,36 @@ class Ukhr(AuthenticatedDataSource):
                         setattr(run, attr, val)
                 run.runner.sex = ukhr_line.sex
 
-    def _race_data(self, start_time, course_name):
+    def _daily_data(self, start_time, course_name):
         """ Find data for event, parse and/or download CSV if necessary """
         start_time = timestamp(start_time)
-        self._update_cache(start_time)
         try:
-            daily_data = self._cache[float(start_time.daystart())]
+            daily_data = self.cache[float(start_time.daystart())]
         except KeyError:
             raise NotFound("Data for %s not in cache after update", start_time.format('int'))
 
         cache_key = self._generic_key(start_time, course_name)
-        try:
-            return daily_data[cache_key]
-        except KeyError:
-            raise NotFound("%s not found (%s)",
-                           self._format_generic_key(cache_key),
-                           ', '.join(self._format_generic_key(key) for key in sorted(daily_data.keys()))[:1000])
+        return daily_data, cache_key
+
+
+    def match(self, fpath):
+        """Match run_ids with data from UKHR"""
+        runs = pd.read_csv(fpath)
+        runs.columns = ['Run_ID', 'Start_time', 'Course_name', 'Horse_name']
+        runs['horse_name'] = ''
+        runs['date'] = ''
+        for i in xrange(runs.shape[0]):
+            start_time = runs.Start_time.values[i]
+            course_name = runs.Course_name.values[i]
+            if float(timestamp(start_time).daystart()) in self.cache:
+                daily_data, cache_key = self._daily_data(start_time, course_name)
+                if cache_key in daily_data:
+                    event_data, runner_data = daily_data[cache_key]
+                    horse_name = runs.Horse_name.values[i].title()
+                    if horse_name in runner_data.keys():
+                        runs.set_value(i, 'horse_name', horse_name)
+                        runs.set_value(i, 'date', timestamp(start_time).format('%Y-%m-%d'))
+        runs.to_csv("../run_id_match_V1.csv")
 
     def _read_csv(self, fpath, raise_errors=False):
         def line_repair(iterable):
@@ -271,7 +285,7 @@ class Ukhr(AuthenticatedDataSource):
             if not line['horse']:
                 continue
             try:
-                runner_name = Horsename.validated(line['horse'])
+                runner_name = line['horse']
             except ValueError:
                 continue
 
@@ -317,26 +331,23 @@ class Ukhr(AuthenticatedDataSource):
             if ts == ts.monthstart():
                 logger.info("Verifying / fetching %", ts.format("%Y-%m"))
             try:
-                self._update_cache(ts, store_only=True)
+                self._update_cache(ts)
             except Exception:
                 logger.error("Verifying / fetching % failed", ts.format("%Y-%m-%d"))
-                logger.exception()
+                #logger.exception()
             ts += DAY
 
-    def _update_cache(self, start_time, force=False, store_only=False):
+    def _update_cache(self, start_time):
         """ Download csv if local file does not exist or is outdated """
 
         stamp = timestamp(start_time)
-        if not force and float(stamp.daystart()) in self._cache:
-            return
 
         try:
             fpath = self._cached_csv(start_time)
         except NotFound:
             fpath = self._download_csv(start_time)
 
-        if not store_only:
-            self._cache.update(self._read_csv(fpath))
+        self.cache.update(self._read_csv(fpath))
 
     def _cached_csv(self, start_time):
         fpath = self._csv_filename(start_time)
