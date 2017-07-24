@@ -18,7 +18,23 @@ logger = get_logger(__package__)
 
 HIGH_KURTOSIS_FACTORS_hashed = set(['z64f5be67e', 'z90adc182a', 'z7081bf371', 'z34b808e99', 'z757be272e', 'z5a85cd6a9', 'zf991b634a', 'z62651f605',
                                     'zd002b7067', 'z2ef7fedca', 'z6f11029f7', 'z412893062', 'z919b9585a', 'z89b0eda37', 'z31780b3f4', 'z6631693d3',
-                                    'z0b27f29ad', 'zd7cd94e4c', 'zf5b2aef2a'])
+                                    'z0b27f29ad', 'zd7cd94e4c', 'zf5b2aef2a', 'WeightDiffTotal', 'ClassWeightDiffRuns', 'Dam_AdjacentGoing_ROI',
+                                    'Dam_RaceType_PL', 'WeightDiffWinsDifference', 'Dam_RaceClass_PL', 'ClassDiffDifference', 'ClassWeightDiffWinsRuns',
+                                    'TrainerCalendarSR', 'DaysSincePreviousTrainerWin', 'Dam_Age_ROI', 'Dam_Age_PL', 'ValueOdds(Probability)',
+                                    'Sire_Distance_ROI', 'Sire_All_Win', 'TrainerCalendarReturn', 'LastTimeTrainerChange', 'ClassWeightDiffWinsRuns1Year',
+                                    'DifferentialRankingClass1Year', 'Dam_Distance_Win', 'Sire_RaceClass_ROI', 'TRF20RunsWins', 'TJCRuns', 'Distance2ago',
+                                    'TJCWins', 'ClassDiffWinsRuns1Year', 'Distance5ago', 'Sire_Going_SR', 'Sire_GoingDistance_Run', 'Dam_All_PL', 'Dam_DistanceRange_SR',
+                                    'ClassWeightDiffTotal1Year', 'ClassWeightDiffWinsTotal', 'WinClassProbability', 'LstRanking', 'KouldsScore_GoingBand_Dam',
+                                    'Dam_RaceClass_Run', 'TrainerLast40RunsROI', 'BetFairSPForecastWinPrice', 'Dam_Distance_AE', 'TRF04WeeksRuns',
+                                    'TrainerCalendarWins', 'TrainerLast10RunsROI', 'ClassWeightDiffDifference1Year', 'ClassDiffWinsRuns', 'Sire_Going_PL',
+                                    'Dam_Distance_SR', 'KouldsScore_RaceClass_Dam', 'TrainerLast10RunsSR', 'DistanceRegression', 'Sire_RaceClass_PL',
+                                    'Sire_RaceType_PL', 'WeightDiffRuns', 'Sire_Going_ROI', 'Distance4ago', 'ClassDiffWinsDifference1Year',
+                                    'Dam_All_Win', 'Sire_Going_AE', 'Trainer5YearSR', 'Sire_Age_SR', 'Race4RunsAgoRaceClass', 'TJSR',
+                                    'Sire_All_ROI', 'TrainerLast10RunsWins', 'Dam_Going_SR', 'Distance3ago', 'Dam_DistanceRange_PL', 'Dam_Age_Win',
+                                    'TCRuns', 'DistanceLast', 'Race5RunsAgoRaceType', 'Dam_Distance_PL', 'Dam_RaceType_AE', 'TCROI', 'ClassDiffRuns1Year',
+                                    'ClassDiffAverage', 'Dam_Going_Win', 'Dam_GoingDistance_Win', 'Sire_Age_AE', 'TrForm8ago', 'TJCTypeWins',
+                                    'Sire_AdjacentGoing_ROI', 'Sire_GoingDistance_Win', 'Trainer5YearPL', 'WeightDiffWinsTotal1Year', 'WeightDiffDifference1Year',
+                                    'RacesSincePreviousTrainerWin'])
 PRICE_FACTORS_hashed = set(['zb392bb74a', 'z6809c316d', 'zd678f0538', 'z027f9f0f5', 'z88e79930c', 'z4a72dc02f', 'z1a3573928', 'z7b15df227'])
 
 

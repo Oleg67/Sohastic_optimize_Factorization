@@ -80,3 +80,4 @@ def print_factor_order(stats, factornames, valid1=None):
     sorted_names = np.array(factornames)[valid1[2:]][si[::-1]]
     for i in xrange(len(si)):
         print '%3i:  %70s    t-score sum: %4.2f' % (i, sorted_names[i], sum_t_scores[si[::-1]][i])
+    return sorted_names
