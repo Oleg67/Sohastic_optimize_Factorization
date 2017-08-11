@@ -6,7 +6,6 @@ import re
 from collections import namedtuple
 
 import numpy as np
-import pycountry
 
 from .errors import ValidationValueError
 
@@ -116,16 +115,6 @@ class Country(Codified):
             self._value = self.exceptions[code]
             return
 
-        try:
-            self._value = pycountry.countries.lookup(code).alpha_3
-        except LookupError:
-            raise ValueError("Invalid country code: %s" % code)
-
-    @property
-    def name(self):
-        return pycountry.countries.get(alpha_3=self._value).name
-
-    country = name
 
 
 class Obstacle(Codified):
