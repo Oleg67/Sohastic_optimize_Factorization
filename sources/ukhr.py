@@ -142,7 +142,7 @@ class Ukhr(AuthenticatedDataSource):
         return daily_data, cache_key
 
 
-    def match(self, fpath):
+    def _match_from_file(self, fpath):
         """Match run_ids with data from UKHR"""
         runs = pd.read_csv(fpath)
         runs.columns = ['Run_ID', 'Start_time', 'Course_name', 'Horse_name']
@@ -159,7 +159,39 @@ class Ukhr(AuthenticatedDataSource):
                     if horse_name in runner_data.keys():
                         runs.set_value(i, 'horse_name', horse_name)
                         runs.set_value(i, 'date', timestamp(start_time).format('%Y-%m-%d'))
-        runs.to_csv("../run_id_match_V1.csv")
+        return runs
+
+    def match(self, fpath):
+        runs = self._match_from_file(fpath)
+        dates = runs.date.unique()
+        print_dates = ['2013-01-01', '2014-01-01', '2015-01-01', '2016-01-01', '2017-01-01']
+        ukhr_data = pd.DataFrame({'run_id': [0]})
+        for d in dates[1:]:
+            if d in print_dates:
+                print ('Appending data for date: %s' % d)
+            year = d.split('-')[0]
+            fpath = "../ukhr/" + year + "/ukhr_daily_" + d + ".csv"
+            ukhr_daily = pd.read_csv(fpath)
+            ukhr_daily['run_id'] = np.nan
+            cols = [key.strip().replace(' ', '').replace('&', '') for key in list(ukhr_daily.columns)]
+            ukhr_daily.columns = cols
+            daily_runs = runs[runs.date == d]
+            for i in range(ukhr_daily.shape[0]):
+                is_in = daily_runs.horse_name.isin([ukhr_daily.Horse[i]])
+                if (np.any(is_in)):
+                    runid = daily_runs.Run_ID[daily_runs.horse_name == ukhr_daily.Horse[i]].values
+                    start_times = daily_runs.Start_time[daily_runs.horse_name == ukhr_daily.Horse[i]].values
+                    uk_st = float(timestamp(d + ' ' + ukhr_daily['Time24Hour'][i]))
+                    runid = runid[start_times == uk_st]
+                    if len(runid) == 1:
+                        if runid not in ukhr_data.run_id.values and runid not in ukhr_daily.run_id.values:
+                            ukhr_daily.set_value(i, 'run_id', runid)
+            if d == timestamp(self.earliest_record).format('%Y-%m-%d'):
+                ukhr_data = ukhr_daily
+            else:
+                ukhr_data = ukhr_data.append(ukhr_daily)
+
+        return ukhr_data
 
     def _read_csv(self, fpath, raise_errors=False):
         def line_repair(iterable):
