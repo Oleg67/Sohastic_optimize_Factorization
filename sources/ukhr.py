@@ -163,8 +163,8 @@ class Ukhr(AuthenticatedDataSource):
             try:
                 ukhr_daily = pd.read_csv(fpath)
             except:
-                fpath = self._cached_csv(timestamp(d), fpath)
                 try:
+                    fpath = self._cached_csv(timestamp(d), fpath)
                     ukhr_daily = pd.read_csv(fpath)
                 except:
                     print ('File for date %s not found' % d)
