@@ -146,51 +146,61 @@ class Ukhr(AuthenticatedDataSource):
         """Match run_ids with data from UKHR"""
         runs = pd.read_csv(fpath)
         runs.columns = ['Run_ID', 'Start_time', 'Course_name', 'Horse_name']
-        runs['horse_name'] = ''
         runs['date'] = ''
         for i in xrange(runs.shape[0]):
             start_time = runs.Start_time.values[i]
-            course_name = runs.Course_name.values[i]
-            if float(timestamp(start_time).daystart()) in self.cache:
-                daily_data, cache_key = self._daily_data(start_time, course_name)
-                if cache_key in daily_data:
-                    event_data, runner_data = daily_data[cache_key]
-                    horse_name = runs.Horse_name.values[i].title()
-                    if horse_name in runner_data.keys():
-                        runs.set_value(i, 'horse_name', horse_name)
-                        runs.set_value(i, 'date', timestamp(start_time).format('%Y-%m-%d'))
+            runs.set_value(i, 'date', timestamp(start_time).format('%Y-%m-%d'))
         return runs
 
     def match(self, fpath):
         runs = self._match_from_file(fpath)
         dates = runs.date.unique()
         print_dates = ['2013-01-01', '2014-01-01', '2015-01-01', '2016-01-01', '2017-01-01']
-        ukhr_data = pd.DataFrame({'run_id': [0]})
-        for d in dates[1:]:
+        for d in dates:
             if d in print_dates:
                 print ('Appending data for date: %s' % d)
-            year = d.split('-')[0]
-            fpath = "../ukhr/" + year + "/ukhr_daily_" + d + ".csv"
-            ukhr_daily = pd.read_csv(fpath)
+            fpath = self._csv_filename(timestamp(d))
+            try:
+                ukhr_daily = pd.read_csv(fpath)
+            except:
+                fpath = self._cached_csv(timestamp(d), fpath)
+                try:
+                    ukhr_daily = pd.read_csv(fpath)
+                except:
+                    print ('File for date %s not found' % d)
+                    continue
             ukhr_daily['run_id'] = np.nan
             cols = [key.strip().replace(' ', '').replace('&', '') for key in list(ukhr_daily.columns)]
             ukhr_daily.columns = cols
             daily_runs = runs[runs.date == d]
+            our_hn = daily_runs.Horse_name.values
+            our_cn = daily_runs.Course_name.values
+            our_st = daily_runs.Start_time.values
             for i in range(ukhr_daily.shape[0]):
-                is_in = daily_runs.horse_name.isin([ukhr_daily.Horse[i]])
-                if (np.any(is_in)):
-                    runid = daily_runs.Run_ID[daily_runs.horse_name == ukhr_daily.Horse[i]].values
-                    start_times = daily_runs.Start_time[daily_runs.horse_name == ukhr_daily.Horse[i]].values
+                try:
+                    uk_hn = ukhr_daily.Horse[i].upper()
                     uk_st = float(timestamp(d + ' ' + ukhr_daily['Time24Hour'][i]))
-                    runid = runid[start_times == uk_st]
-                    if len(runid) == 1:
-                        if runid not in ukhr_data.run_id.values and runid not in ukhr_daily.run_id.values:
+                    uk_cn = ukhr_daily.Meeting[i].upper()
+                except:
+                    continue
+                if (uk_cn in our_cn and uk_st in our_st and uk_hn in our_hn):
+                    match_cn = daily_runs[our_cn == uk_cn]
+                    if uk_st in match_cn.Start_time.values:
+                        match_st = match_cn[match_cn.Start_time == uk_st]
+                        if uk_hn in match_st.Horse_name.values:
+                            match_all = match_st[match_st.Horse_name == uk_hn]
+                            runid = match_all.Run_ID.values
+                            if len(runid) != 1:
+                                print ('Incorrect Length')
+                            if runid in ukhr_daily.run_id.values:
+                                print ('Duplicate Ids')
                             ukhr_daily.set_value(i, 'run_id', runid)
             if d == timestamp(self.earliest_record).format('%Y-%m-%d'):
                 ukhr_data = ukhr_daily
             else:
                 ukhr_data = ukhr_data.append(ukhr_daily)
 
+        print ('Data reading done')
         return ukhr_data
 
     def _read_csv(self, fpath, raise_errors=False):
@@ -371,7 +381,6 @@ class Ukhr(AuthenticatedDataSource):
 
     def _update_cache(self, start_time):
         """ Download csv if local file does not exist or is outdated """
-
         stamp = timestamp(start_time)
 
         try:
@@ -381,10 +390,10 @@ class Ukhr(AuthenticatedDataSource):
 
         self.cache.update(self._read_csv(fpath))
 
-    def _cached_csv(self, start_time):
-        fpath = self._csv_filename(start_time)
-        if os.path.isfile(fpath):
-            return fpath
+    def _cached_csv(self, start_time, fpath):
+        #fpath = self._csv_filename(start_time)
+        #if os.path.isfile(fpath):
+        #   return fpath
 
         # Lookup for downloads with original UKHR filename
         date_str = timestamp(start_time).format('%Y%m%d')
@@ -403,8 +412,9 @@ class Ukhr(AuthenticatedDataSource):
         found_fpath = yeardir.join(fname)
 
         # Rename the file, so that we can grab it right away next time
-        shutil.move(found_fpath, fpath)
-        return fpath
+        #shutil.move(found_fpath, fpath)
+        #return fpath
+        return found_fpath
 
     def _download_csv(self, start_time=None):
         self.assert_login()
