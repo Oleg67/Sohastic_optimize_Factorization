@@ -66,11 +66,14 @@ def cut(data, cl, time = 'time', train = (0.75, 0.85), val = (0.5, 0.65), thresh
     
     return (train_event, val_event, test_event)
 
-def step1(data, train_val_test, factors =factors, av= av, mod =mod, strata= strata, verbose=False):
+def step1(data, train_val_test, verbose=False, **model_par):
     
     bad_list = []
     train, val, test = train_val_test
-    
+
+    av = model_par['av']
+    strata = model_par['strata']
+    factors = model_par['factors']
     
     for cluster in np.unique(data):
         
@@ -92,12 +95,17 @@ def step1(data, train_val_test, factors =factors, av= av, mod =mod, strata= stra
     return bad_list, prob
 
 
-def step2(data, train_val_test, threshold = 100, av =av, tsav = tsav, factors = factors, mod = mod, verbose=False):
+def step2(data, train_val_test, threshold = 100, verbose=False, **model_par):
     
     model_coefs, model_step1prob, model_step2prob, model_likelihood = {}, {}, {}, {}
     
     train, val, test = train_val_test
     df_cl = data.value_counts()
+
+    av = model_par['av']
+    factors = model_par['factors']
+    mod = model_par['mod']
+    tsav = model_par['tsav']
 
     for cluster in df_cl.index[df_cl > threshold]:
 
@@ -111,7 +119,7 @@ def step2(data, train_val_test, threshold = 100, av =av, tsav = tsav, factors = 
         
         lmbd = int(10*8000./ df_cl[cluster])       
 		         
-        model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster]\
+        model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster], ints\
         = mod.fit_slices(tsav, factors,  depth=3, lmbd =lmbd, verbose=False, fit_afresh=True)
         if verbose:
             print 'cluster {}  number  {}'.format(cluster, df_cl[cluster])
@@ -119,23 +127,56 @@ def step2(data, train_val_test, threshold = 100, av =av, tsav = tsav, factors = 
             print model_likelihood[cluster]
     return model_coefs, model_step1prob, model_step2prob, model_likelihood
 
-def step2a(data, cluster_list, is1, oos, av =av, tsav = tsav, factors = factors, mod = mod, verbose=False):
+def step2prob_clusters_model(data, cluster_list, is1, is2, oos, verbose=False, **model_par):
+    """
+    build the models for eact cluster
+    return:
+    model_coefs - the dictionary of coeffisients of models for each cluster,
+    model_step1prob - the dictionary of step 1 probability of models for each cluster, 
+    model_step2prob - the dictionary of step 2 probability of models for each cluster, 
+    model_likelihood - the dictionary of likelihood of models for each cluster,
+    ints - list of run_id for slices,
+    train_val_test - dictionary of lists of events for train, validation, test for each cluster
+    arg;
+    data <= pandas Seriese of clusters for each event
+    cluster_list <= names of clusters that will be consider
+    is1 <= mask of train datas
+    is2 <= mask of validation datas
+    oos <= mask of test datas
+    verbose <= flag of print intermidiate results
+    **model_par (must be deffine av, factors, mod, tsav)
+    av <= original datas of races events
+    factors <= factors for building the model
+    mod <= Model
+    tsav <= array of times slices 
+    """
     
     model_coefs, model_step1prob, model_step2prob, model_likelihood = {}, {}, {}, {}
+    train_val_test = {}
     
     df_cl = data.value_counts()
+
+    av = model_par['av']
+    factors = model_par['factors']
+    mod = model_par['mod']
+    tsav = model_par['tsav']
 
     for cluster in cluster_list:
 
         mask_cluster = np.in1d(av.event_id, data.index[data == cluster])
         
         mod.is1 = is1 & mask_cluster
-        mod.is2 = is1 & mask_cluster
+        mod.is2 = is2 & mask_cluster
         mod.oos = oos & mask_cluster
+
+        train_events = np.unique(av.event_id[mod.is1])
+        val_events = np.unique(av.event_id[mod.is2])
+        test_events = np.unique(av.event_id[mod.oos])
+        train_val_test[cluster] = train_events, val_events, test_events
         
         lmbd = int(10*8000./ df_cl[cluster])		
 		         
-        model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster]\
+        model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster], ints\
         = mod.fit_slices(tsav, factors,  depth=3, lmbd =lmbd, verbose=False, fit_afresh=True)
         if verbose:
             print 'cluster {}  number  {}'.format(cluster, df_cl[cluster])
@@ -143,7 +184,7 @@ def step2a(data, cluster_list, is1, oos, av =av, tsav = tsav, factors = factors,
             test_event = np.unique(av.event_id[mod.oos])
             print 'LL  {}          {}            {}'.format (len(train_event), len(train_event), len(test_event))
             print model_likelihood[cluster]
-    return model_coefs, model_step1prob, model_step2prob, model_likelihood
+    return model_coefs, model_step1prob, model_step2prob, model_likelihood, ints, train_val_test
 
 def cluster_lists(data, oos, threshold, min_test =5, verbose=False):
     """
@@ -171,40 +212,48 @@ def cluster_lists(data, oos, threshold, min_test =5, verbose=False):
 
 
 
-def ll_diff (prob_new, prob_old, train, val, test, 
-             av =av, tsav =tsav, strata = strata, predict_mask =predict_mask):
+def ll_diff (prob_new, prob_old, train, val, test, inds, **model_par):
+             
     """ 
     count the differance of Likelihood for two models 
-    <prob_new>  probability of new model
-    <prob_old>  probability of old model
-    <train, val, test> are lists of events for train, validation, test
+    return array [number of slice, 3] differance in train, validation, test 
+    prob_new - probability of new model
+    prob_old - probability of old model
+    train, val, test - lists of events for train, validation, test
+    inds - list of run_id for slices
     """
+    av = model_par['av']
+    tsav = model_par['tsav']
     
-    llcomb = np.zeros((11, 3))
+    ll_comb = np.zeros((11, 3))
     ll_old = np.zeros((11, 3))
+    
+    from utils.accumarray import uaccum
+    from prediction.tools.helpers import strata_scale_down
+    strata = strata_scale_down(av.event_id[inds])
         
-    is1_ = np.in1d(av.event_id, train)
-    is2_ = np.in1d(av.event_id, val)
-    oos_ = np.in1d(av.event_id, test)
+    is1_ = np.in1d(av.event_id, train)[inds]
+    is2_ = np.in1d(av.event_id, val)[inds]
+    oos_ = np.in1d(av.event_id, test)[inds]
         
     for sl in xrange(10):
         good = ~np.isnan(tsav[sl + 1].log_pmkt_back) & ~np.isnan(tsav[sl + 1].log_pmkt_lay)
         good = uaccum(strata, good, func='all')
         for i, mask in enumerate([is1_, is2_, oos_]):
-            p_new = prob_new[sl, mask[predict_mask] & good] # probobility new model
-            p_old = prob_old[sl, mask[predict_mask] & good] # probobility old model
+            p_new = prob_new[sl, mask & good] # probobility new model
+            p_old = prob_old[sl, mask & good] # probobility old model
             
-            winners = av.result[predict_mask][mask[predict_mask] & good] == 1
+            winners = av.result[inds][mask & good] == 1
 
-            llcomb[sl, i] = np.mean(np.log(p_new[winners][p_new[winners] !=0])) * 1000 # LL new model
+            ll_comb[sl, i] = np.mean(np.log(p_new[winners][p_new[winners] !=0])) * 1000 # LL new model
             ll_old[sl, i] = np.mean(np.log(p_old[winners][p_old[winners] !=0])) * 1000 # LL old model
         #print llcomb[sl, i] - ll_old[sl, i]
             
-    diff_new_old = llcomb- ll_old # differance between mix  and old model 
+    diff_new_old = ll_comb- ll_old # differance between mix  and old model 
     return diff_new_old
 
-def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='train', not_list =np.array([]),                         
-                         av =av, tsav = tsav, strata = strata, predict_mask =predict_mask, verbose=False):
+
+def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='train', not_list =np.array([]), verbose=False, **kwargs):
     """ 
     buid the new model to replace each cluster by new
     <data> - pandas Series with index are event_id , data are clusters names 
@@ -213,6 +262,7 @@ def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='tra
     <train_val_test>  event_id for train , validation , test 
     <best>  the choose from train or validadion
     <not_list>  the list with clusters that to exclude from model
+    needs av, tsav, predict_mask, strata
     """
     
     if best == 'train':
@@ -222,6 +272,10 @@ def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='tra
     
     train, val, test = train_val_test
     mean_new =[]
+
+    av = model_par['av']
+    predict_mask = model_par['predict_mask']
+    
     
     for cluster in new_Model.keys():
         
@@ -230,7 +284,7 @@ def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='tra
             prob_mix = np.where(cluster_mask , new_Model[cluster] , old_Model )
         
 
-            diff_new_old = ll_diff(prob_mix, old_Model, train, val, test)
+            diff_new_old = ll_diff(prob_mix, old_Model, train, val, test, **model_par)
 
             print 'cluster ', cluster
             if verbose:
@@ -243,8 +297,7 @@ def ll_for_each_cluster (data,  new_Model, old_Model, train_val_test, best ='tra
     cl_list = [x[0] for x in sorted(mean_new , key = lambda x: x[1], reverse =True)]
     return cl_list, mean_new
 
-def ll_for_mix_clusters (data, cl_list, new_Model, old_Model, train_val_test,  best ='test', 
-                         av =av, tsav =tsav, strata =strata, predict_mask =predict_mask, verbose=False):
+def ll_for_mix_clusters (data, cl_list, new_Model, old_Model, train_val_test,  best ='test', verbose=False, **kwargs):
     """ 
     buid the new model to replace each cluster by the mix of new
     <data> - pandas Series with index are event_id , data are clusters names 
@@ -252,9 +305,14 @@ def ll_for_mix_clusters (data, cl_list, new_Model, old_Model, train_val_test,  b
     <old_Model>  wins probability for no cluster 
     <train_val_test> event_id for train , validation , test 
     <best>  the choose from train or validadion
+    needs av, tsav, predict_mask, strata 
     """
     
     cl_lists = []
+    
+    av = model_par['av']
+    predict_mask = model_par['predict_mask']
+    
     
     for i in range(len(cl_list)):
         cl_lists.append(cl_list[:i+1])
@@ -279,7 +337,7 @@ def ll_for_mix_clusters (data, cl_list, new_Model, old_Model, train_val_test,  b
                 cluster_mask = np.in1d(av.event_id[predict_mask], data.index[data == cluster])
                 prob_mix = np.where(cluster_mask , new_Model[cluster],  prob_mix)
     
-        diff_new_old = ll_diff(prob_mix, old_Model, train, val, test)
+        diff_new_old = ll_diff(prob_mix, old_Model, train, val, test, **model_par)
         if verbose:
             print '    train       validation      test'
             print diff_new_old      # differance between mix  and old model
@@ -327,20 +385,22 @@ def dic_to_tenzor(dic, key, base):
         tenzor[i+1,:,:] = dic[k]
     return tenzor
 
-def clusters_number(data, key, av=av):
+def clusters_number(data, key, **kwargs):
     """ 
     list with numbers of clusters 
     <data>  pandas Series index = event_id, data = cluster's names
     <key> the list of clusters that use
+    needs av
     """
     
+    av = kwargs['av']
     cl_number = np.zeros((len(av.event_id)))
     for i,k in enumerate(key):
         mask = np.in1d(av.event_id,data.index[data ==k])
         cl_number = np.where(mask, i+1, cl_number)
     return cl_number
 
-def write_dic_to_simdata(file_name, old_step1probs, old_coefs, oos, data=None, av =av,
+def write_dic_to_simdata(file_name, old_step1probs, old_coefs, oos, data=None, av =None,
                          cluster_step1probs =None, cluster_coefs =None, cluster_names =None):
     """
     <file_name> is name of file to record
@@ -353,6 +413,7 @@ def write_dic_to_simdata(file_name, old_step1probs, old_coefs, oos, data=None, a
     <cluster_coefs> is a dictionary : key is the cluster name and data and 
                         data are the coefficient matrix with the size N_slices x 3
     <cluster_number> is an integer array with the cluster numbers per race. Size: len(av)
+    if cluster_number is not None needs av, data, cluster**
     """
     
     cl_number= np.zeros((len(av.event_id)))
@@ -385,7 +446,7 @@ def write_dic_to_simdata(file_name, old_step1probs, old_coefs, oos, data=None, a
             pickle.dump( [s1prob, oos, coef_s, cl_number], f)
     return
 
-def write_to_simdata(file_name, old_step1probs, old_coefs, oos, av =av, 
+def write_to_simdata(file_name, old_step1probs, old_coefs, oos, av =None, 
                          cluster_step1probs =None, cluster_coefs =None, cluster_names =None):
     """
     <file_name> is name of file to record
