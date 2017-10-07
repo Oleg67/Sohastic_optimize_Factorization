@@ -9,6 +9,46 @@ def sign(x):
     return cmp(x, 0)
 
 
+NUMBER_CHARS = frozenset(string.digits + '-')
+def treewalk(data, convert_bool=True, convert_keys=True, dict_type=None):
+    """
+    Funktion zum rekursiven Umwandeln von Strings in Datentypen innerhalb der Dictionaries.
+    Geschwindigkeitsoptimierung durch moeglichst schnelle - hinreichende - Abbruchbedingungen
+    und Listcomprehension.
+    """
+    if isinstance(data, (str, unicode)):
+        data = data.strip()
+        if not data:
+            return data
+        elif data[0] in NUMBER_CHARS:
+            try:
+                return int(data)
+            except ValueError:
+                try:
+                    return float(data)
+                except:
+                    pass
+        elif convert_bool and data[0] in 'fFtT':
+            dtl = data.lower()
+            if dtl == 'true':
+                return True
+            elif dtl == 'false':
+                return False
+    elif isinstance(data, types.GeneratorType):
+        return [treewalk(x, convert_bool, convert_keys, dict_type) for x in data]
+    elif isinstance(data, (tuple, list)) and not hasattr(data, '_fields'):
+        return type(data)(treewalk(x, convert_bool, convert_keys, dict_type) for x in data)
+    elif isinstance(data, dict):
+        dict_type = dict_type if dict_type is not None else type(data)
+        if convert_keys:
+            return dict_type((treewalk(key, convert_bool, convert_keys, dict_type),
+                              treewalk(val, convert_bool, convert_keys, dict_type))
+                              for key, val in data.items())
+        else:
+            return dict_type((key, treewalk(val, convert_bool, convert_keys, dict_type)) for key, val in data.items())
+    return data
+
+
 def object_by_id(id_):
     import gc
     for obj in gc.get_objects():

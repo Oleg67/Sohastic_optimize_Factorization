@@ -10,7 +10,7 @@ def test_sub2ind():
     subscripts = np.array([[4, 1], [4, 2], [1, 3], [1, 5], [5, 1], [1, 5], [1, 4], [3, 2], [5, 1], [4, 3]]) - 1
     ref = np.array([4, 9, 11, 21, 5, 21, 16, 8, 5, 14]) - 1
     res = umath.sub2ind(shape, subscripts, order='F')
-    np.testing.assert_array_equal(res, ref)
+    np.testing.assert_equal(res, ref)
 
 
 def test_multiple_lin_reg():
@@ -59,15 +59,10 @@ def test_multiple_lin_reg():
                    0.64819841, 0.02522818, 0.84220661, 0.55903254, 0.85409995,
                    0.34787919, 0.44602665, 0.05423948, 0.17710753, 0.66280806]]).transpose()
 
-
     out = umath.multiple_linear_regression(x, y)
-    np.testing.assert_array_almost_equal(out.b, mlr[0])
-    np.testing.assert_array_almost_equal(out.mse, mlr[1][0][0])
-    np.testing.assert_array_almost_equal(out.sb2, np.array(mlr[2]).flat, decimal=5)
-
-    # TODO: Next two fail due to shape mismatch 5,5 vs 5,1, probably outdated
-    # np.testing.assert_array_almost_equal(out.t, mlr[3])
-    # np.testing.assert_array_almost_equal(out.p, mlr[4])
+    np.testing.assert_allclose(out.b, mlr[0])
+    np.testing.assert_allclose(out.mse, mlr[1][0][0])
+    np.testing.assert_allclose(out.sb2, np.array(mlr[2]).flat, atol=0.00001)
 
 
 A_ordered = np.array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 7, 7]).reshape((4, 4))
@@ -93,16 +88,14 @@ def _ia_ref(A, C, first=False):
 
 def assert_unique_with_order(A, first=True):
     C, ia, ic = umath.unique_custom(A, return_index=True, return_inverse=True, first=first)
-    np.testing.assert_array_equal(C, sorted(set(A.flat)))
-    np.testing.assert_array_equal(A, C[ic].reshape(A.shape))
-    np.testing.assert_array_equal(C, A.flat[ia])
-
-    for ia_i, ia_ref in zip(ia.flat, _ia_ref(A, C, first)):
-        assert ia_i == ia_ref
+    np.testing.assert_equal(C, sorted(set(A.flat)))
+    np.testing.assert_equal(A, C[ic].reshape(A.shape))
+    np.testing.assert_equal(C, A.flat[ia])
+    np.testing.assert_equal(ia.flat, _ia_ref(A, C, first))
     return C, ia, ic
 
-unique_test_list = [A_ordered, A_ordered.flat[::-1].reshape(A_ordered.shape), A_long, A_long.flat[::-1].reshape(A_long.shape)] + rand_arrs
 
+unique_test_list = [A_ordered, A_ordered.flat[::-1].reshape(A_ordered.shape), A_long, A_long.flat[::-1].reshape(A_long.shape)] + rand_arrs
 
 @pytest.mark.parametrize("A", unique_test_list)
 def test_unique(A):
@@ -127,9 +120,9 @@ def test_unique_compare():
                        13, 15])
 
     C, ia, ic = assert_unique_with_order(A, first=False)
-    np.testing.assert_array_equal(C, C_ref)
-    np.testing.assert_array_equal(ia, ia_ref)
-    np.testing.assert_array_equal(ic, ic_ref)
+    np.testing.assert_equal(C, C_ref)
+    np.testing.assert_equal(ia, ia_ref)
+    np.testing.assert_equal(ic, ic_ref)
 
 
 @pytest.mark.parametrize("dims", [[3, 2, 1], [3, 1], [3, 0], [2, 0]])
@@ -142,7 +135,7 @@ def test_sum_ndim(dims):
 
     res = umath.sum_ndim(test_arr, dims)
     compare = _sum_non_preserving(test_arr, dims)
-    np.testing.assert_array_equal(np.squeeze(res), compare)
+    np.testing.assert_equal(np.squeeze(res), compare)
     assert len(test_arr.shape) == len(res.shape)
     for dim in xrange(len(test_arr.shape)):
         if dim in dims:
@@ -152,16 +145,16 @@ def test_sum_ndim(dims):
 
 
 def test_discretize_numbers():
-    np.testing.assert_array_equal(umath.discretize_discrete([3.4, 1.2, 5.4, 1.2, 3.4, 3.4, 0.1]), np.array([2, 1, 3, 1, 2, 2, 0]))
+    np.testing.assert_equal(umath.discretize_discrete([3.4, 1.2, 5.4, 1.2, 3.4, 3.4, 0.1]), np.array([2, 1, 3, 1, 2, 2, 0]))
 
 
 def test_discretize_strings():
-    np.testing.assert_array_equal(umath.discretize_discrete('FHFCCH'), np.array([1, 2, 1, 0, 0, 2]))
+    np.testing.assert_equal(umath.discretize_discrete('FHFCCH'), np.array([1, 2, 1, 0, 0, 2]))
 
 
 def test_quantile_shapes():
     t = np.concatenate((np.arange(0, 10, 0.1), np.repeat(np.arange(0, 10, 0.2), 5))).reshape((-1, 1))
-    np.testing.assert_array_equal(umath.quantile_custom(t, 10).flat, umath.quantile_custom(t.flat, 10).flat)
+    np.testing.assert_equal(umath.quantile_custom(t, 10), umath.quantile_custom(t.flat, 10))
 
 
 def test_quantile_plain():
@@ -186,7 +179,7 @@ def test_quantile_plain():
                     - 0.07083721, -2.48628392, 0.58117232, -2.19243492, -2.31928031,
                     0.07993371, -0.94848098, 0.41149062, 0.67697781, 0.85773255,
                     - 0.69115913, 0.44937762, 0.10063335, 0.82607   , 0.53615708])
-    np.testing.assert_array_equal(umath.quantile_custom(vec, 3), q)
+    np.testing.assert_equal(umath.quantile_custom(vec, 3), q)
 
 
 @pytest.fixture(scope='module')
@@ -203,5 +196,5 @@ def test_discretize(dd, col):
     errs = set(dd.datacont[col][z] for (z, (x, y)) in enumerate(zip(calculated, dd.datadisc[col])) if x != y)
     for err in errs.intersection(set(dd.edges[0][col][0])):
         print "Edge error: %s" % err
-    np.testing.assert_array_equal(calculated, dd.datadisc[col])
+    np.testing.assert_equal(calculated, dd.datadisc[col])
 

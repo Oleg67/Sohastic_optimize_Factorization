@@ -1,13 +1,12 @@
 import numpy as np
 
 from utils.accumarray import uaccum
-from utils.math import unique_custom
 
 
 class Probabilities(object):
-    
+
     @classmethod
-    def compute(cls, coefs, factors, strata=None, rng=None, full_range=True, verbose=False):
+    def compute(cls, coefs, factors, strata=None, rng=None, full_range=True):
         """ Do usual checks and preprocessing. If the checked conditions are granted
             already, use _compute instead.
         """
@@ -19,11 +18,11 @@ class Probabilities(object):
             strata = np.zeros(factors.shape[1], dtype=int)
 
         if rng is None:
-            probs = cls._compute(coefs, factors, strata, verbose=verbose)
+            probs = cls._compute(coefs, factors, strata)
         else:
             factors_rng = factors[:, rng]
-            strata_rng = unique_custom(strata[rng], return_inverse=True)[1]
-            probs = cls._compute(coefs, factors_rng, strata_rng, verbose=verbose)
+            strata_rng = np.unique(strata[rng], return_inverse=True)[1]
+            probs = cls._compute(coefs, factors_rng, strata_rng)
 
         if not full_range or rng is None:
             return probs
@@ -37,9 +36,9 @@ class Probabilities(object):
         raise NotImplementedError
 
 
-class ProbabilitiesCL(Probabilities):    
+class ProbabilitiesCL(Probabilities):
     @classmethod
-    def _compute(cls, coefs, factors, strata, verbose=False):
+    def _compute(cls, coefs, factors, strata):
         V = np.dot(coefs.transpose(), factors).reshape(-1)
         assert np.all(~np.isnan(V)), 'At least one horse strength is not a number.'
         # subtract race-wise mean in order to avoid to compute exponentials on very large numbers
@@ -54,7 +53,7 @@ class ProbabilitiesHorseStrength(Probabilities):
     '''Like CL model, but each horse is assigned a constant strength. 
     The job is to figure out that strength based on win flags'''
     @classmethod
-    def _compute(cls, ids, strengths, strata, verbose=False):
+    def _compute(cls, ids, strengths, strata):
         assert np.max(ids) + 1 == len(strengths), 'The number of different IDs does not match the number of different strengths'
         run_strengths = strengths[ids]
         expV = np.exp(run_strengths)

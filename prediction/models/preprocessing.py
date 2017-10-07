@@ -5,6 +5,8 @@ from utils.accumarray import uaccum
 from utils.arrayview import ArrayView
 from ..tools.helpers import strata_scale_down, spread_from_av
 
+def testfun():
+    pass
 
 def load_slices(path='../datadev/'):
     slicefiles = [f for f in listdir(path) if f.find('slice') > 0 and f.find('av.bcolz') > 0]

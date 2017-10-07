@@ -7,12 +7,19 @@ from ..tools.helpers import strata_scale_down
 
 
 class ModelParameters(object):
+    defaults = dict(transformation_degree=0, depth=3, lmbd=10, cut_mask=None,
+                        build_start=factor_build_start, build_end=factor_build_end)
 
-    def __init__(self, av, build_start=None, build_end=None, oos_start=None, cut_mask=None, transformation_degree=0, depth=3, lmbd=10, verbose=False):
-        self.build_start = build_start or factor_build_start
-        self.build_end = build_end or factor_build_end
-        self.oos_start = oos_start or np.nanmax(av.start_time)
-        assert np.nanmin(av.start_time) - DAY <= self.build_start < self.build_end < self.oos_start <= np.nanmax(av.start_time)
+    def __init__(self, av, oos_start=None, verbose=False, checked=True, **kwargs):
+        for k, v in kwargs.items():
+            if k not in self.defaults:
+                raise TypeError("%s got an unexpected keyword argument '%s'" % (type(self).__name__, k))
+        for k, v in self.defaults.items():
+            setattr(self, k, kwargs.get(k, v))
+        self._av_start = np.nanmin(av.start_time)
+        self._av_end = np.nanmax(av.start_time)
+        self.oos_start = oos_start or self._av_end
+        self.verbose = verbose
 
         self.strata = strata_scale_down(av.event_id)
         self.run_id = av.run_id.copy()
@@ -20,17 +27,14 @@ class ModelParameters(object):
         self.result = av.result.copy()
         self.course = av.course.copy()
 
-        self.valid = self.valid_mask(av.result, av.course, depth=depth)
-        if cut_mask is not None:
-            self.valid &= cut_mask
+        self.valid = self.valid_mask(av.result, av.course, depth=self.depth)
+        if self.cut_mask is not None:
+            self.valid &= self.cut_mask
         self.build_mask = (self.build_start <= av.start_time) & (av.start_time < self.build_end) & self.valid
         self.is1, self.is2, self.oos = self.model_mask(self.valid, t0=self.build_end, t2=self.oos_start)
         self.model_mask = self.is1 | self.is2 | self.oos
-
-        self.depth = depth
-        self.lmbd = lmbd
-        self.transformation_degree = transformation_degree
-        self.verbose = verbose
+        if checked:
+            self.check()
 
     def model_mask(self, valid, t0=None, t1=None, t2=None):
         if t1 is None:
@@ -50,6 +54,16 @@ class ModelParameters(object):
         eval_rng = (course <= 88) & good_depth
         return eval_rng
 
+    def check(self):
+        assert self._av_start - DAY <= self.build_start < self.build_end < self.oos_start <= self._av_end
+
+    def is_default(self):
+        if self._av_end != self.oos_start:
+            return False
+        for k, v in self.defaults.items():
+            if getattr(self, k) != v:
+                return False
+        return True
 
 
 def cut_model(model, mask):

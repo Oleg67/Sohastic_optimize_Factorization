@@ -187,8 +187,8 @@ def test_from_tuple(ac):
 
 
 @pytest.mark.parametrize("filetype", ['npz', 'bcolz'])
-def test_purge(tmpdir, ac, filetype):
-    dump_path = str(tmpdir.join(type(ac).__name__.lower() + '_dummy.av.' + filetype))
+def test_purge(ac, filetype):
+    dump_path = settings.paths.tmp.join(type(ac).__name__.lower() + '_dummy.av.' + filetype)  #@UndefinedVariable
     ac.set_path(dump_path)
 
     assert not os.path.exists(ac.path)
@@ -205,8 +205,8 @@ def test_purge(tmpdir, ac, filetype):
 
 
 @pytest.mark.parametrize("filetype", ['npz', 'bcolz'])
-def test_overwrite(tmpdir, ac, filetype):
-    dump_path = str(tmpdir.join(type(ac).__name__.lower() + '_dummy.av.' + filetype))
+def test_overwrite(ac, filetype):
+    dump_path = settings.paths.tmp.join(type(ac).__name__.lower() + '_dummy.av.' + filetype)  #@UndefinedVariable
     ac.set_path(dump_path)
 
     try:
@@ -218,8 +218,8 @@ def test_overwrite(tmpdir, ac, filetype):
 
 
 @pytest.mark.parametrize("filetype", ['npz', 'bcolz'])
-def test_dump_restore(tmpdir, ac, filetype):
-    dump_path = str(tmpdir.join(type(ac).__name__.lower() + '_dummy.av.' + filetype))
+def test_dump_restore(ac, filetype):
+    dump_path = settings.paths.tmp.join(type(ac).__name__.lower() + '_dummy.av.' + filetype)  #@UndefinedVariable
     ac.set_path(dump_path)
     assert len(ac.extra) > 2
 

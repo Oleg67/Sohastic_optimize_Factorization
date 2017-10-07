@@ -6,6 +6,7 @@ import re
 from collections import namedtuple
 
 import numpy as np
+import pycountry
 
 from .errors import ValidationValueError
 
@@ -115,6 +116,16 @@ class Country(Codified):
             self._value = self.exceptions[code]
             return
 
+        try:
+            self._value = pycountry.countries.lookup(code).alpha_3
+        except LookupError:
+            raise ValueError("Invalid country code: %s" % code)
+
+    @property
+    def name(self):
+        return pycountry.countries.get(alpha_3=self._value).name
+
+    country = name
 
 
 class Obstacle(Codified):
@@ -217,12 +228,13 @@ class RaceClass(Codified):
     """ Race class classifies races by their intention and the general skill level of the competitors """
 
     BUMPER = 'B'  # Implies flat, probably amateur jockeys, low stakes, bad horses, unexperienced young horses
+    HUNT = 'H'   # Amateur jockeys
     SELLING = 'S'
     CLAIMING = 'M'
     LISTED = 'L'
-    GRADE3 = 'G3'
+    GRADE3 = 'G3'  # Gaul-Bundesliga, implies WFA handicapping
     GRADE2 = 'G2'
-    GRADE1 = 'G1'  # Gaul-Bundesliga, implies WFA handicapping
+    GRADE1 = 'G1'
     # STAKES = 'S' -> only includes conditions handicapping
     # GROUPx: GRADEx, difference just in obstacle type
     # CLASSIFIED: Graded + Listed
@@ -232,6 +244,7 @@ class RaceClass(Codified):
         ('Maiden', BUMPER),
         ('Novice', BUMPER),
         ('Beginner', BUMPER),
+        ('Hunter Chase', HUNT),
 
         ('Claiming', CLAIMING),
         ('Claim', CLAIMING),
@@ -247,7 +260,7 @@ class RaceClass(Codified):
         ('Grp2', GRADE2),
         ('Grd1', GRADE1),
         ('Grp1', GRADE1),
-        ('Grand National', GRADE1),
+        ('Grand National', GRADE3),
     ))
 
     handles = frozenset(names.values())

@@ -1,13 +1,12 @@
-import pickle
 import numpy as np
+import pdb
 
 from utils import get_logger
 from utils.accumarray import uaccum
 
 from ..tools.helpers import strata_scale_down
 from .clmodel import run_cl_model
-from .prediction import step1coefs as current_step1coefs, step2coefs as current_step2coefs
-from .probabilities import ProbabilitiesCL
+from .prediction import step1coefs as current_step1coefs, step2coefs as current_step2coefs, effective_coefficients, factors_to_probs
 
 logger = get_logger(__package__)
 
@@ -70,14 +69,6 @@ class TSModel(object):
         
         self.stats1 = CLStats(nSlices, nModels)
         self.stats2 = CLStats(nSlices, 3)
-
-    def effective_coefficients(self, step1_coefs, step2_coefs):
-        """ Mix step1 and step2 coefficients, so that they can be applied in one step. 
-        Just like mix_coefficients but assuming that the step 1 probabilities are already computed. """
-        coefs = step2_coefs.copy()
-        for i in xrange(2):  # for back and lay
-            coefs[:, i] = step2_coefs[:, i] + step1_coefs[:, i] * step2_coefs[:, 2]
-        return coefs
     
     def cut_to_ts(self, run_id_small, run_id_big):
         '''Cut model parameters to tsav size, where the time series is present'''
@@ -120,9 +111,8 @@ class TSModel(object):
     def finalize(self, coef1=None, coef2=None):
         if coef1 is not None and coef2 is not None:
             self.stats1.coef, self.stats2.coef = coef1, coef2
-        self.eff_coefs = self.effective_coefficients(self.stats1.coef, self.stats2.coef)
-        for sl in xrange(len(self.tsav)):
-            self.step1probs[sl] = ProbabilitiesCL._compute(self.stats1.coef[sl, 2:], self.factors, self.params.strata)
+        self.eff_coefs = effective_coefficients(self.stats1.coef, self.stats2.coef)
+        self.step1probs = factors_to_probs(self.stats1.coef[:, 2:], self.factors, self.params.strata)
 
     def concat_and_fit(self, strata, result, nonrunner, factorlist, ts_idx, valid, verbose=False, depth=1, lmbd=0, step=1):
         factors, valid_runs = self.concat(strata, nonrunner, factorlist)
@@ -133,11 +123,13 @@ class TSModel(object):
             mask[rng] = self.params.__dict__[rng][ts_idx] & valid_runs
         assert all([np.any(mask[rng]) for rng in mask])
         stats, probs = run_cl_model(factors[valid, :], result, strata, mask[ranges[0]], mask[ranges[1]], mask[ranges[2]], verbose=False, depth=depth, lmbd=lmbd)[:2]
+        # pdb.set_trace()
         return stats, probs
 
     def fit_slices(self, fit_afresh=True):
         if not fit_afresh:
             self.finalize(current_step1coefs, current_step2coefs)
+            return
         nSlices = len(self.tsav)
         ts_idx, strata, result = self.cut_to_ts(self.tsav[0].run_id, self.params.run_id)
         valid1, valid2 = self.get_valid_mask(self.factors, self.params.is1)
@@ -157,13 +149,4 @@ class TSModel(object):
         self.stats2.postprocess(valid2)
         self.finalize()
 
-    def write_simdata(self, filename='simdata.p'):
-        '''
-        <step1probs> is expected to be a matrix N_slices x len(av). 
-        <oos> is a boolean mask denoting the out of sample range. len(oos) shoud equal len(av)
-        <coefs> is a coefficient matrix with the size N_slices x 3
-        '''
-        f = file('../datadev/' + filename, 'wb')
-        pickle.dump([self.step1probs[:, self.params.oos], self.params.oos, self.eff_coefs], f)
-        f.close()
 

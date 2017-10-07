@@ -3,8 +3,24 @@ import numpy as np
 
 from utils.containers import AttrDict
 from utils.arrayview import ArrayView
-from prediction.models.model_parameters import ModelParameters
+from prediction.models.model_parameters import ModelParameters, factor_build_start
 from ..factor_management import Factor, FactorList
+
+
+def test_model_parameters():
+    av = ArrayView.dummy(sim_start=factor_build_start)
+    mod = ModelParameters(av, checked=False)
+    assert mod.is_default()
+    mod = ModelParameters(av, depth=3, verbose=True, checked=False)
+    assert mod.is_default()
+    mod = ModelParameters(av, transformation_degree=1, checked=False)
+    assert not mod.is_default()
+    mod = ModelParameters(av, depth=10, build_start=100, checked=False)
+    assert mod.build_start == 100
+    assert not mod.is_default()
+    with pytest.raises(TypeError):
+        ModelParameters(av, depth=10, invalid_param=100, checked=False)
+
 
 @pytest.fixture(scope='module')
 def model(request):
@@ -13,7 +29,7 @@ def model(request):
     build_start = np.min(av.start_time[av.start_time > 0])  # factor build start
     build_end = build_start + (np.max(av.start_time) - build_start) * 0.66  # factor build end
     oos_start = build_start + (np.max(av.start_time) - build_start) * 0.85
-    mod = ModelParameters(av, build_start, build_end, oos_start)
+    mod = ModelParameters(av, build_start=build_start, build_end=build_end, oos_start=oos_start)
     return mod
 
 
@@ -79,14 +95,14 @@ def test_missing_value_regression_not_any_allgood(model):
     factors = np.array([[-0.9379, -2.8922, np.nan, np.nan, -0.2047, np.nan],
         [    np.nan, 1.0077, -0.3842, 1.0997, -0.0601, -0.0745],
         [ 1.1244, np.nan, -1.3453, np.nan, 0.6897, -0.3437]])
-    fl = FactorList(factors, ['a'] * 3)
+    fl = FactorList.from_matrix(factors)
     model.build_mask = np.array([ True, True, True, True, False, False], dtype=bool)
     with pytest.raises(AssertionError):
         fl.missing_value_regression(model)
 
 
 def test_uniqueness_of_missing_patterns():
-    fl = FactorList(np.empty((1, 1)), ['x'])
+    fl = FactorList.from_matrix(np.empty((1, 1)))
     n = 13
     combs = np.zeros((n, 2 ** n), dtype=np.int8)
     for i in xrange(2 ** n):
@@ -104,11 +120,11 @@ def test_fill_missing_values(lmock, model):
     #    [ 1.1244,     np.nan, -1.3453,     np.nan,  0.6897, -0.3437]])
     # in_sample_mask = np.array([ True,  True,  True,  True, False, False], dtype=bool)
     factors = factors0.copy()
-    fl = FactorList(factors, ['x'] * len(factors))
+    fl = FactorList.from_matrix(factors)
     coefs = fl.missing_value_regression(model)[1]
 
     factors = factors0.copy()
-    fl = FactorList(factors, ['x'] * len(factors))
+    fl = FactorList.from_matrix(factors)
     fl.fill_missing_values(model)
     factors = fl.asmatrix()
 

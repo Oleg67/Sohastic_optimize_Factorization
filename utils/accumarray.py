@@ -3,15 +3,10 @@ Compatibility module for previous accumarray implementation, using new aggregate
 """
 import numpy as np
 import numba as nb
-from numpy_groupies import (aggregate_nb as accum, aggregate_np as accum_np, unpack,
-                            aggregate_py as accum_py)  # @UnusedImport for reimport
+from numpy_groupies import (aggregate as accum, aggregate_np as accum_np, unpack,
+                             aggregate_py as accum_py, uaggregate as uaccum)  # @UnusedImport for reimport
 
 from .intnan import isnan, nanval, nancumsum
-from .math import unique_custom
-
-
-def uaccum(group_idx, a, **kwargs):
-    return unpack(group_idx, accum(group_idx, a, **kwargs))
 
 
 @nb.njit
@@ -57,10 +52,10 @@ def step_iter(group_idx):
 
 def accum_sort(accmap, x):
     '''Sorts x within each group defined by accmap. Feuer gemacht mit Indexgymnastik. Author und Copyright bis 3540: Arthur ;-)'''
-    _, goodaccmap = unique_custom(accmap, return_inverse=True)
+    _, goodaccmap = np.unique(accmap, return_inverse=True)
     q = np.concatenate(accum_np(goodaccmap, x, func='sort'))
     # disambiguate strata in accmap
-    _, disambaccmap = unique_custom(goodaccmap + np.arange(len(accmap)) / 1e10, return_inverse=True)
+    _, disambaccmap = np.unique(goodaccmap + np.arange(len(accmap)) / 1e10, return_inverse=True)
     return q[disambaccmap]
 
 

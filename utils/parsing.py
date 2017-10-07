@@ -12,10 +12,11 @@ import re
 from collections import namedtuple
 
 from .times import timestamp, YEAR
-from .helpers import mklist, mkset  # @UnusedImport for reimport
+from .helpers import mklist, mkset, treewalk  # @UnusedImport for reimport
 from .world import (Country, Obstacle, Handicap, RaceClass, Distance, Going,
                     HORSE_LENGTH, NECK, SHORT_NECK, HEAD, SHORT_HEAD, NOSE)
-
+from .names import Horsename
+from .database import Run, EquipmentList
 
 
 ParsedDescription = namedtuple('ParsedDescription', 'handicap obstacle race_class distance date_of_birth days_idx')
@@ -237,7 +238,8 @@ def racecard_name_parser(rc_entry, default_country=None, error_country=None):
             country = error_country
     else:
         country = error_country
-    return country, cardno
+    name = Horsename.validated(name)
+    return name, country, cardno
 
 
 def name_country_rating_split(entry):
@@ -260,9 +262,26 @@ def name_country_rating_split(entry):
         entry = entry.split('(', 1)[0].strip()
     else:
         country = None
-    return country, rating
+
+    name = Horsename.validated(entry)
+    return name, country, rating
 
 
+def parse_equipment(eq):
+    eq = eq.strip('() \n').replace(' ', '')
+    if len(eq) > 10:
+        raise ValueError("Invalid equipment string: %s" % eq)
+    if not eq or '-' in eq:
+        return None
+    eq_list = []
+    exceptions = {'cp': 'cp', 'es': 'es', 'e/s': 'es'}
+    for excp, val in exceptions.items():
+        if excp in eq:
+            eq_list.append(val)
+            eq = eq.replace(excp, ' ')
+
+    eq_list += [c for c in eq.split('+') if c in string.ascii_letters]
+    return EquipmentList(sorted(eq_list))
 
 
 def parse_unicode(ustr):
@@ -343,6 +362,21 @@ def parse_int(val, min=None, max=None):
         return None
     return val
 
+
+def parse_result(result):
+    try:
+        return int(result)
+    except (TypeError, ValueError):
+        result = result.strip().upper()
+        if not result:
+            return None
+        if result in 'CUFPR' or result in ('PU', 'UR', 'RR', 'RTR', 'HR', 'RO', 'SU', 'BD', 'CO'):
+            # pulled up, unseated rider, refused race, refused to race, hit rails, ran out, slipped up, ... , ...
+            return Run.NOT_FINISHED
+        elif result in ('DQ', 'DIS'):
+            return Run.DISQUALIFIED
+        else:
+            raise ValueError("Unknown race result: %s" % result)
 
 
 def parse_color_gender(line):

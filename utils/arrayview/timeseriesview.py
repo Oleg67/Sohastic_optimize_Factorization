@@ -6,7 +6,6 @@ from .arraycontainer import ArrayContainer
 
 logger = get_logger(__package__)
 
-
 class TimeseriesView(ArrayContainer):
     _spread_av_tmp = None
     _col_types = dict(timestamp='float64', event_id='int64', run_id='int64', back_volume='float32', lay_volume='float32',
@@ -16,7 +15,7 @@ class TimeseriesView(ArrayContainer):
     fields = sorted(_col_types)
 
     @classmethod
-    def from_db(cls, db, ts_start=0, ts_end=np.inf, account=None, verbose=False):
+    def from_db(cls, db, ts_start=0, ts_end=np.inf, account=None, verbose=False, currency='EUR'):
         if isinstance(ts_start, str):
             ts_start = float(timestamp(ts_start))
         if isinstance(ts_end, str):
@@ -27,7 +26,7 @@ class TimeseriesView(ArrayContainer):
 
         for ev in db.safe_iter(event_iter, chunk_len=1000):
             # Get all timeseries for one event together
-            ev_tss = [db.root['Timeseries'].unique.get((run.id, 'BF')) for run in ev.runs]
+            ev_tss = [db.root['Timeseries'].unique.get((run.id, 'BF', currency)) for run in ev.runs]
             misses = sum(1 for (run_ts, run) in zip(ev_tss, ev.runs) if not run_ts and not run.non_runner)
             if misses:
                 if verbose:

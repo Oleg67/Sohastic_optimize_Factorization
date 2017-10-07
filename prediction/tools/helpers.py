@@ -3,17 +3,19 @@ import pprint
 import pickle
 import numpy as np
 
-from utils import settings, intnan, Folder
+from utils import intnan, Folder, settings
 from utils.accumarray import accum, uaccum, step_count
 from utils.math import intersect
 
 #TODO: Move one-time-used functions back to their original modules
 
-def get_logpmkt(av0, mask):
+def get_logpmkt(bsp, result, event_id, mask=None):
     """ Preprocessing for market odds """
-    logpmkt = -np.log(av0.bsp[mask])
-    logpmkt[av0.result[mask] == -2] = -7.0
-    validbsp = uaccum(av0.event_id[mask], ~np.isnan(logpmkt), func=all)
+    if mask is None:
+        mask = np.ones(len(bsp), dtype=bool)
+    logpmkt = -np.log(bsp[mask])
+    logpmkt[result[mask] == -2] = -7.0
+    validbsp = uaccum(event_id[mask], ~np.isnan(logpmkt), func=all)
     return logpmkt, validbsp
 
 

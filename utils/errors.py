@@ -80,9 +80,9 @@ class ForbiddenStatusChange(StatusError):
     """ Transition from one state to another is not allowed """
     def __init__(self, obj, initial_state, target_state, comment=None, **kwargs):
         StatusError.__init__(self, **kwargs)
-        self.text = '%s: %s -> %s' % (obj, initial_state, target_state)
+        self.message = '%s: %s -> %s' % (obj, initial_state, target_state)
         if comment:
-            self.text += ': ' + comment
+            self.message += ': ' + comment
 
 
 class SearchError(SimpleException):

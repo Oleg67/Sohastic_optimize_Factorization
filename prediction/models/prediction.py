@@ -1,14 +1,11 @@
 from __future__ import division
 import numpy as np
 import numba as nb
-import bottleneck as bn
 
-from utils import get_logger
+from utils import get_logger, nbtools as nbt
+from utils.accumarray import uaccum
 
-from .probabilities import ProbabilitiesCL
 from . import parameters
-
-# TODO: Simplify and define the predict interface
 
 logger = get_logger(__package__)
 
@@ -50,73 +47,98 @@ def dynamic_slicenum(ttm, bp, lp, bvol, lvol, nr, coefs, edges):
     return np.searchsorted(edges, strength, side='right')
 
 
-def mix_coefficients(step1_coefs, step2_coefs):
-    """ Mix step1 and step2 coefficients, so that they can be applied in one step """
-    mixed_coefs = np.zeros_like(step1_coefs)
-    mixed_coefs[:, :2] = step2_coefs[:, :2] + step1_coefs[:, :2] * np.tile(step2_coefs[:, 2], (2, 1)).transpose()  # B/L prices
-    mixed_coefs[:, 2:] = step1_coefs[:, 2:] * np.tile(step2_coefs[:, 2], (step1_coefs.shape[1] - 2, 1)).transpose()  # Other factors
-    return mixed_coefs
-
-mixed_coefs = mix_coefficients(step1coefs, step2coefs)
-
 def effective_coefficients(step1_coefs, step2_coefs):
-    """ Mix step1 and step2 coefficients, so that they can be applied in one step. 
-    Just like mix_coefficients but assuming that the step 1 probabilities are already computed. """
+    """ Mix step1 and step2 coefficients, so that they can be applied in one step. """
     coefs = step2_coefs.copy()
     for i in xrange(2):  # for back and lay
         coefs[:, i] = step2_coefs[:, i] + step1_coefs[:, i] * step2_coefs[:, 2]
     return coefs
 
-def prepare_step1(mixed_coefs, strata, factors):
-    # TODO: This doesn't contain any nan check
-    probs_step1 = np.full((mixed_coefs.shape[0], factors.shape[1]), np.nan)
-    for i in xrange(mixed_coefs.shape[0]):
-        probs_step1[i, :] = ProbabilitiesCL.compute(mixed_coefs[i, 2:].reshape((-1, 1)), factors, strata)
-    return probs_step1.transpose()
+eff_coefs = effective_coefficients(step1coefs, step2coefs)
 
 
-def predict_step1(bprice, lprice, factors, coefs):
-    """ New reference function for creating step1 probs with all factors weighted in directly.
-        The result should still be fed through step2 prediction.
-    """
-    try:
-        all_factors = np.concatenate((np.log(1 / bprice.astype(np.float64).reshape((1, -1))),
-                                      np.log(1 / lprice.astype(np.float64).reshape((1, -1))),
-                                      factors.astype(np.float64)), axis=0)
-    except ValueError as e:
-        raise ValueError(e.message + '\n' + '\n    '.join((str(bprice), str(lprice), str(factors))))
-    V = np.dot(coefs, all_factors)
-    V -= bn.nanmean(V)
-    expV = np.exp(V)
-    return (expV / bn.nansum(expV)).astype(np.float32)
+def _prep_factor(x, logarithmize):
+    fac = x.astype(np.float64)
+    if logarithmize:
+        np.log(fac, fac)
+    if len(fac.shape) == 1:
+        fac = fac.reshape((1, -1))
+    return fac
 
 
-def predict_step2(bprice, lprice, probs_step1, coefs):
-    """ New reference function for mixing prices and raw probabilities together according to
-        given coefficients grouped by market. Needs further speedup by replacing probs_cl
-        with a faster and more strapped down version.
-    """
-    if np.all(np.isnan(probs_step1)):
-        return probs_step1
-    try:
-        factors = np.log(np.concatenate((1 / bprice.reshape((1, -1)),
-                                         1 / lprice.reshape((1, -1)),
-                                         probs_step1.reshape((1, -1))), axis=0))
-    except ValueError as e:
-        raise ValueError(e.message + '\n' + '\n    '.join((str(bprice), str(lprice), str(probs_step1))))
-    V = np.dot(coefs, factors)
-    V -= bn.nanmean(V)
-    expV = np.exp(V)
-    return expV / bn.nansum(expV)
+def factors_to_probs(coefs, factors, event_id=None, logarithmize=None):
+    factors = factors if isinstance(factors, list) else [factors]
+    n = factors[-1].shape[-1]
+    event_id = np.zeros(n, dtype=int) if event_id is None else event_id
+    coefs = coefs.reshape((1, -1)) if len(coefs.shape) == 1 else coefs
+    if np.any(~np.isfinite(coefs)):
+        raise ValueError('Coefficients contain nans or infs.')
+    if logarithmize is None:
+        logarithmize = []
+    logarithmize.extend([False] * (len(factors) - len(logarithmize)))
+    count = 0
+    temp = np.zeros((coefs.shape[0], n))
+    with np.errstate(invalid='ignore'):
+        for f, log_this in zip(factors, logarithmize):
+            if log_this and np.any(f <= 0):
+                raise ValueError('Cannot use logarithm with zero or negative entries.')
+            fac = _prep_factor(f, log_this)
+            temp += np.dot(coefs[:, count:count + fac.shape[0]], fac)
+            count += fac.shape[0]
+        if coefs.shape[1] != count:
+            raise ValueError('Coefficients do not match the shape of factors.')
 
+        if np.any(np.abs(temp) > 100):
+            raise ValueError('Bad probabilitiy computation. Strengths contain too large values.')
 
-def predict_step2_by_ttm(bprice, lprice, probs_step1, ttm):
-    coefs = step2coefs[slicenum_by_ttm_jitted(ttm)]
-    return predict_step2(bprice, lprice, probs_step1, coefs)
+        if np.any(np.isfinite(temp)):
+            temp -= np.nanmean(temp)
+            expS = np.exp(temp)
+            for sl in xrange(coefs.shape[0]):
+                temp[sl] = (expS[sl] / uaccum(event_id, expS[sl], func='nansum')).astype(np.float32)
+
+        if np.any(temp < 0):
+            raise ValueError('Probabilities contain negative entries.')
+
+    return temp.squeeze()
 
 
 def missing_factors(av, run_id):
     row_id = av.row_lookup(run_id)
     return [factor for factor in factornames_trimmed if av.get_value(factor, row_id) is None]
+
+
+@nb.njit
+def compute_probabilities(ei, ec, sc, step1probs, coefs):
+    # TODO: Testcase to make sure this applies to live betting
+    Vmean = 0.0
+    valid_sum = 0
+    for j in range(ei.nruns):
+        ec.temp64[j] = coefs[2] * np.log(step1probs[sc.row_id[j]])
+        if ei.lprice[j] > 0:
+            ec.temp64[j] += coefs[1] * np.log(1 / ei.lprice[j])
+        else:
+            ec.temp64[j] = np.nan
+        if ei.bprice[j] > 0:
+            ec.temp64[j] += coefs[0] * np.log(1 / ei.bprice[j])
+        else:
+            ec.temp64[j] = np.nan
+        if not np.isnan(ec.temp64[j]):
+            Vmean += ec.temp64[j]
+            valid_sum += 1
+    if valid_sum > 0:
+        Vmean /= valid_sum
+
+    # Subtract mean (so that exponential is less likely to blow up) and exponentiate
+    Vsum = 0.0
+    for j in xrange(ei.nruns):
+        if not np.isnan(ec.temp64[j]):
+            ec.temp64[j] = np.exp(ec.temp64[j] - Vmean)
+            Vsum += ec.temp64[j]
+
+    # Normalize probs
+    if Vsum > 0:
+        for j in xrange(ei.nruns):
+            ei.probs[j] = ec.temp64[j] / Vsum
 
 

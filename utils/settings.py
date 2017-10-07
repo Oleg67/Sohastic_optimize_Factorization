@@ -3,7 +3,7 @@ import yaml
 
 from .containers import DefaultNoneAttrDict, Folder
 
-VERSION = 29
+VERSION = 32
 
 
 def _config_walk(x, object_type=dict, dict_convert=lambda x: x, replace_type=DefaultNoneAttrDict):

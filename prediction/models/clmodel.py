@@ -2,12 +2,13 @@
 Module for calculations to adjust the influence of different factors to the runner win probability
 '''
 from __future__ import division
-import logging
 import numpy as np
 
 from utils import AttrDict, get_logger, nbtools as nbt
 from utils.accumarray import uaccum
 from utils.math import sleep
+
+from scipy.optimize import minimize
 
 from . import jlikelihoods
 from ..tools.helpers import strata_scale_down, check_results, strata_mask_compatible
@@ -51,7 +52,8 @@ def run_cl_model(factors, result, strata, is1=None, is2=None, oos=None, depth=1,
 
     stats = AttrDict()
     model = jlikelihoods.jLikelihoodCL(*exploded, lmbd=lmbd)
-    stats.coef = newton(model, verbose=verbose)
+    stats.coef = maximize_likelihood(model, method='newton', verbose=verbose)
+
     sleep(delay / 10)
 
     hessian = model.compute(stats.coef, d2ll=True)
@@ -118,7 +120,7 @@ def _student_t(hessian, coef):
     return dict(coefse=coefse, t=t)
 
 
-def newton(model, step=0.9, tolerance=1e-5, max_iterations=20, max_tries=5, verbose=False, check_condition=True):
+def maximize_likelihood(model, method='newton', max_iterations=20, max_tries=5, verbose=False, check_condition=True):
     """
     Performs Newton-Ralphson method for finding an extremum of a function
     Input:
@@ -132,10 +134,9 @@ def newton(model, step=0.9, tolerance=1e-5, max_iterations=20, max_tries=5, verb
     verbose = prints something during operation if set to True
     """
     x0 = np.zeros((model.factors.shape[0], 1))
-    xold = x0.reshape((-1, 1))
 
     if check_condition:
-        d2ll = model.compute(xold, d2ll=True)
+        d2ll = model.compute(x0, d2ll=True)
         if nbt.allnan(d2ll):
             jc = np.nan  # Prevent segfault in cond
         else:
@@ -146,32 +147,49 @@ def newton(model, step=0.9, tolerance=1e-5, max_iterations=20, max_tries=5, verb
     for tries_count in xrange(max_tries):
         if tries_count > 0:
             if verbose:
-                logging.info("Newton method did not converge. Trying again with different x0...")
-            xold = np.random.randn(*xold.shape)
-        for iter_count in xrange(max_iterations):
-            sleep()
-            dll, d2ll = model.compute(xold, dll=True, d2ll=True)
-            if nbt.allnan(d2ll):
-                xnew = np.full_like(xold, np.nan)
-            else:
-                xnew = xold - step * np.linalg.solve(d2ll.transpose(), dll.reshape((-1, 1)))
-            if verbose:
-                logging.info('Derivative norm after %d iterations: %g' % (iter_count, np.linalg.norm(dll)))
-            if nbt.anynan(xnew):
-                # Does not converge
-                break
-            elif np.linalg.norm(dll) < tolerance or \
-                    np.linalg.norm(xold - xnew, np.inf) / np.linalg.norm(xnew, np.inf) < tolerance:
-                if verbose:
-                    print
-                if np.any(np.isnan(xnew)):
-                    raise ArithmeticError('Newton-Ralphson method returns NaN coefficients.')
-                return xnew
-            else:
-                xold = xnew
+                logger.info("Optimization did not converge. Trying again with different x0...")
+            x0 = np.random.randn(*x0.shape)
+        if method == 'newton':
+            res = newton(model, x0, tolerance=1e-5, max_iterations=max_iterations, verbose=verbose)
+        else:
+            res = newton_cg(model, x0, tolerance=1e-3)
+        if res.success:
+            return res.x.reshape((-1, 1))
     else:
-        raise ArithmeticError("Newton approximation did not converge after %d retries" % max_tries)
+        raise ArithmeticError("Optimization did not converge after %d retries" % max_tries)
 
 
+def newton(model, x0, tolerance=1e-5, max_iterations=20, verbose=False):
+    res = AttrDict()
+    res.success = False
+    res.x = None
+    step = 1.0
+    xold = x0
+    for iter_count in xrange(max_iterations):
+        sleep()
+        dll, d2ll = model.compute(xold, dll=True, d2ll=True)
+        if nbt.allnan(d2ll):
+            xnew = np.full_like(xold, np.nan)
+        else:
+            xnew = xold - step * np.linalg.solve(d2ll.transpose(), dll.reshape((-1, 1)))
+        if verbose:
+            logger.info('Derivative norm after %d iterations: %g' % (iter_count, np.linalg.norm(dll)))
+        if nbt.anynan(xnew):
+            # Does not converge
+            break
+        elif np.linalg.norm(dll) < tolerance or \
+                np.linalg.norm(xold - xnew, np.inf) / np.linalg.norm(xnew, np.inf) < tolerance:
+            if np.any(np.isnan(xnew)):
+                raise ArithmeticError('Newton-Ralphson method returns NaN coefficients.')
+            res.success = True
+            res.x = xnew
+            return res
+        else:
+            xold = xnew
+    return res
 
 
+def newton_cg(model, x0, tolerance):
+    fun_der = lambda x:-model.compute(x, dll=True)
+    fun = lambda x:-model.compute(x, ll=True)
+    return minimize(fun, x0, method='Newton-CG', jac=fun_der, options={'disp': False, 'xtol':tolerance})

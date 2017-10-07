@@ -13,6 +13,7 @@ import numpy as np
 
 from .. import get_logger, list_get, chunks_sized, intnan, dispdots
 from ..accumarray import accum_sort
+from ..database import Run, get_key_part
 from .arraycontainer import ArrayContainer, _tuple_encode
 
 
@@ -21,8 +22,7 @@ logger = get_logger(__package__)
 fieldnames_event = 'start_time course distance going obstacle race_class win_time prize'.split()
 fieldnames_runner = 'date_of_birth sex dam sire'.split()
 fieldnames_run_lists = ['morning_prob_slice', 'morning_est', 'morning_prob', 'thb_est']
-fieldnames_run = ['jockey', 'trainer', 'weight', 'draw', 'result', 'beaten_length', 'handicap', 'equipment',
-                  'bsp', 'isp', 'bfid', 'bdid']
+fieldnames_run = sorted(Run._properties - Run._key_properties_set - set(fieldnames_run_lists))
 fieldnames_tipsters = ['napstats_tipssum']
 fieldnames_ids = ['event_id', 'run_id', 'runner_id']
 
@@ -30,16 +30,11 @@ fieldname_lists = fieldnames_ids, fieldnames_event, fieldnames_runner, fieldname
 fieldname_list_all = list(chain.from_iterable(fieldname_lists))
 fieldname_list_provided = list(chain(fieldnames_ids, fieldnames_event, fieldnames_runner, fieldnames_run))
 
-fieldtypes = dict(obstacle='S1', sex='S1', race_class='S2', going='S5', name='S20', result='int8', draw='int8',
+fieldtypes = dict(obstacle='S1', sex='S1', race_class='S2', going='S5', condition='S30', name='S20', result='int8', draw='int8',
                   morning_est_times='float64', morning_prob='float32', morning_prob_times='float64', thb_est='float32',
-                  tipsters='int8', napstats_tipssum='int8', ones='int8', condition='S30')
+                  tipsters='int8', napstats_tipssum='int8', ones='int8')
 for fieldname in ['jockey', 'trainer', 'course', 'dam', 'sire', 'strata', 'bfid', 'bdid'] + fieldnames_ids:
     fieldtypes[fieldname] = 'int64'
-
-
-def get_key_part(obj):
-    """ Little helper to get a unique, static key part from Element objects """
-    return getattr(obj, 'id', obj)
 
 
 def get_col_type(col):
@@ -60,6 +55,7 @@ def get_col_type(col):
             if item in col:
                 return 'int32'
     return 'float32'
+
 
 
 class ArrayView(ArrayContainer):
@@ -247,9 +243,11 @@ class ArrayView(ArrayContainer):
             raise OSError('No stored AV file found')
 
     @classmethod
-    def dummy(cls, events=30, runs_per_race=10, runners=None, seed=None, random_factors=0, build_derivates=False):
+    def dummy(cls, events=30, runs_per_race=10, runners=None, seed=None, random_factors=0,
+              sim_start=None, build_derivates=False):
         from .simdata import fill_simdata
         av_size = events * runs_per_race + 1
         av = cls.prepared(allocation=int(av_size * cls.overallocate))
-        fill_simdata(av, events, runs_per_race, runners, seed, random_factors, build_derivates)
+        fill_simdata(av, events, runs_per_race, runners, seed, random_factors,
+                     sim_start=sim_start, build_derivates=build_derivates)
         return av

@@ -5,7 +5,8 @@ from .. import timestamp, YEAR, DAY, HOUR
 from ..accumarray import step_indices, unpack, accum, accum_np
 
 
-def fill_simdata(av, events=30, runs_per_race=10, runners=None, seed=None, random_factors=0, build_derivates=False):
+def fill_simdata(av, events=30, runs_per_race=10, runners=None, seed=None, random_factors=0,
+                 sim_start=None, build_derivates=False):
     rnd = _get_rnd(seed)
     av_size = events * runs_per_race + 1
     av.event_id = np.concatenate(([0], np.repeat(np.arange(events, dtype=int), runs_per_race) + 1))
@@ -32,24 +33,22 @@ def fill_simdata(av, events=30, runs_per_race=10, runners=None, seed=None, rando
     av.trainer = create_ids(av.event_id, np.maximum(int(runners / 15), 2 * runs_per_race), racewise_unique=False, rnd=rnd)
     nsires = runners // 10
     av.sire = av.runner_id % nsires + np.max(av.runner_id) + 1
-    av.fstats_sire = av.runner_id % nsires + np.max(av.runner_id) + 1
+    av.fstats_sire_rtg = av.runner_id % nsires + np.max(av.runner_id) + 1
     av.dam = av.runner_id % (runners // 2) + np.max(av.runner_id) + 1 + nsires
 
-    today = float(timestamp(datetime.date.today().strftime("%Y-%m-%d")))
-    av.date_of_birth = today - 10 * YEAR + YEAR * (av.runner_id % 5)
+    sim_start = sim_start or float(timestamp(datetime.date.today().strftime("%Y-%m-%d"))) - 4 * YEAR
+    av.date_of_birth = sim_start - 6 * YEAR + YEAR * (av.runner_id % 5)
 
     av.bfid = np.arange(av_size, dtype=int) + 4000000
     av.bdid = np.arange(av_size, dtype=int) + 3000000
 
-    times = np.arange(events) * DAY + today - 4 * YEAR + 10 * HOUR + (np.arange(events) % 8) * HOUR
+    times = np.arange(events) * DAY + sim_start + 10 * HOUR + (np.arange(events) % 8) * HOUR
     # Start times should not be assumed to be linearly increasing for some tests
     rnd.shuffle(times)
     av.distance = 1000 + obstacle_choice * 100 + rnd.randint(0, 10) * 100
     av.win_time = av.distance / 14 * (1 + going_choice / 3) * (1 + obstacle_choice / len(obstacle_sel)) + rnd.rand(av_size)
     av.speed = av.distance / av.win_time
     av.start_time = np.concatenate(([0], np.repeat(times, runs_per_race)))
-
-    av.bsp = rnd.rand(av_size) * 999 + 1
 
     av.create_col('step1probs')
     for i in xrange(1, events * runs_per_race + 1, runs_per_race):

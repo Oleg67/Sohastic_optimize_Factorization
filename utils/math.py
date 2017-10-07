@@ -8,8 +8,22 @@ import scipy.stats
 from .containers import AttrDict
 
 
-def sleep(x=None):
-    """ Dummy for running non-async """
+# All math stuff should be able to run without dependencies on gevent
+# Though, when long running tasks should run under gevent control, they
+# need to return the control back to the calling thread on a regular basis.
+# Therefore all long running math tasks should import this sleep, to hand
+# back control, if running in gevent.
+
+def _sleep(x=None):
+    """ Only required when running async """
+
+if 'gevent' in sys.modules:
+    try:
+        from .gutils import sleep
+    except ImportError:
+        sleep = _sleep
+else:
+    sleep = _sleep
 
 
 @contextmanager
@@ -135,7 +149,7 @@ def sub2ind(shape, subscripts, order='C'):
         Works also for an array of subscripts simultaneously.
     """
     try:
-        return np.ravel_multi_index(subscripts.transpose(), shape, order=order)
+        return np.ravel_multi_index(subscripts.transpose().astype(int), np.array(shape).astype(int), order=order)
     except ValueError as e:
         raise ValueError("%s\nshape=%s\nsubscripts=%s" % (e, shape, subscripts))
 
@@ -328,7 +342,7 @@ def create_combinations(av, names, disc_count=4):
     unique_count = np.zeros((len(names), len(av)), dtype=int)
     for i, n in enumerate(names):
         if (type(av[n][0]) == np.string_) or (type(av[n][0]) == np.int64):
-            unique_count[i, :] = unique_custom(av[n], return_inverse=True)[1]
+            unique_count[i, :] = np.unique(av[n], return_inverse=True)[1]
         elif type(av[n][0]) == np.float64:
             d = av[n][~np.isnan(av[n])]
             edges = quantile_custom(d, disc_count - 1)
@@ -336,6 +350,6 @@ def create_combinations(av, names, disc_count=4):
                 unique_count[i, (av[n] >= edges[j]) & (av[n] < edges[j + 1])] = j + 1
             unique_count[i, (av[n] >= edges[-1])] = len(edges)
     confounder = np.math.pi ** (1 + np.arange(len(names)))
-    combs = unique_custom(np.dot(confounder, unique_count), return_inverse=True)[1]
+    combs = np.unique(np.dot(confounder, unique_count), return_inverse=True)[1]
     return combs, unique_count
 
