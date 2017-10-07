@@ -160,6 +160,7 @@ def step2prob_clusters_model(data, cluster_list, is1, is2, oos, verbose=False, *
     factors = model_par['factors']
     mod = model_par['mod']
     tsav = model_par['tsav']
+    depth = model_par['depth']
 
     for cluster in cluster_list:
 
@@ -177,7 +178,7 @@ def step2prob_clusters_model(data, cluster_list, is1, is2, oos, verbose=False, *
         lmbd = int(10*8000./ df_cl[cluster])		
 		         
         model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster], ints\
-        = mod.fit_slices(tsav, factors,  depth=3, lmbd =lmbd, verbose=False, fit_afresh=True)
+        = mod.fit_slices(tsav, factors,  depth =depth, lmbd =lmbd, verbose=False, fit_afresh=True)
         if verbose:
             print 'cluster {}  number  {}'.format(cluster, df_cl[cluster])
             train_event = np.unique(av.event_id[mod.is1])
