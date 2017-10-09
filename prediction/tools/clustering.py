@@ -144,7 +144,7 @@ def step2prob_clusters_model(data, cluster_list, is1, is2, oos, verbose=False, *
     is2 <= mask of validation datas
     oos <= mask of test datas
     verbose <= flag of print intermidiate results
-    **model_par (must be deffine av, factors, mod, tsav)
+    **model_par (must be deffine av, factors, mod, tsav, depth)
     av <= original datas of races events
     factors <= factors for building the model
     mod <= Model
