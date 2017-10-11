@@ -13,8 +13,12 @@ import numpy as np
 
 from .. import get_logger, list_get, chunks_sized, intnan, dispdots
 from ..accumarray import accum_sort
-from ..database import Run, get_key_part
 from .arraycontainer import ArrayContainer, _tuple_encode
+
+
+def get_key_part(obj):
+    """ Little helper to get a unique, static key part from Element objects """
+    return getattr(obj, 'id', obj)
 
 
 logger = get_logger(__package__)
@@ -22,7 +26,20 @@ logger = get_logger(__package__)
 fieldnames_event = 'start_time course distance going obstacle race_class win_time prize'.split()
 fieldnames_runner = 'date_of_birth sex dam sire'.split()
 fieldnames_run_lists = ['morning_prob_slice', 'morning_est', 'morning_prob', 'thb_est']
-fieldnames_run = sorted(Run._properties - Run._key_properties_set - set(fieldnames_run_lists))
+fieldnames_run = ['beaten_length',
+    'bsp',
+    'draw',
+    'equipment',
+    'handicap',
+    'isp',
+    'jockey',
+    'result',
+    'sp_back_volume',
+    'sp_back_volume_final',
+    'sp_lay_volume',
+    'sp_lay_volume_final',
+    'trainer',
+    'weight']
 fieldnames_tipsters = ['napstats_tipssum']
 fieldnames_ids = ['event_id', 'run_id', 'runner_id']
 

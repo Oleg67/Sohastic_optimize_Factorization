@@ -11,6 +11,8 @@ from ..math import sel_len, sleep
 logger = get_logger(__package__)
 
 
+
+
 def _tuple_encode(name):
     """ Convert column names into something digestable for bcolz """
     assert name, "Can not encode empty name"
