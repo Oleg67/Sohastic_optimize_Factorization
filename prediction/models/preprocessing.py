@@ -1,6 +1,7 @@
 from __future__ import division
 from os import listdir
 import numpy as np
+from utils import settings
 from utils.accumarray import uaccum
 from utils.arrayview import ArrayView
 from ..tools.helpers import strata_scale_down, spread_from_av
@@ -8,11 +9,11 @@ from ..tools.helpers import strata_scale_down, spread_from_av
 def testfun():
     pass
 
-def load_slices(path='../datadev/'):
+def load_slices(path = settings.paths.join()):
     slicefiles = [f for f in listdir(path) if f.find('slice') > 0 and f.find('av.bcolz') > 0]
     tsav = {}
     for sl in xrange(len(slicefiles)):
-        tsav[sl] = ArrayView.from_file('../datadev/brain_final2_slice_%i.av.bcolz' % sl)
+        tsav[sl] = ArrayView.from_file(settings.paths.join('brain_final2_slice_%i.av.bcolz' % sl))
     return tsav
 
 
