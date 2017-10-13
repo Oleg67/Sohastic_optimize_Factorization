@@ -1,11 +1,11 @@
 
 import numpy as np
 
-from utils import intnan, get_logger
-from utils.arrayview import ArrayView
-from utils.accumarray import uaccum
-from utils.math import multiple_linear_regression, logarithmize, sleep
-from utils.helpers import dispdots
+from ...utils import intnan, get_logger
+from ...utils.arrayview import ArrayView
+from ...utils.accumarray import uaccum
+from ...utils.math import multiple_linear_regression, logarithmize, sleep
+from ...utils.helpers import dispdots
 
 from .clmodel import run_cl_model
 from .factor_expansion import expand_factor

@@ -1,13 +1,13 @@
 import numpy as np
 import pickle
 
-from utils import settings, timestamp, YEAR
-from utils.arrayview import ArrayView, TimeseriesView
-
-
-from prediction.models.preprocessing import Model
-from prediction.models.prediction import factornames_trimmed
-from prediction.models.parameters import factor_build_end
+from ...utils import settings
+# from ...utils.arrayview import ArrayView, TimeseriesView
+#
+#
+# # from prediction.models.preprocessing import Model
+# from ...prediction.models.prediction import factornames_trimmed
+# from ...prediction.models.parameters import factor_build_end
 
 
 def time_sets_end (data, cl, time = 'time', end = (0.75, 0.85), threshold = 100):
@@ -118,7 +118,7 @@ def step2(data, train_val_test, threshold = 100, verbose=False, **model_par):
         mod.oos = np.in1d(av.event_id, val_test_cluster)
         
         lmbd = int(10*8000./ df_cl[cluster])       
-		         
+
         model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster], ints\
         = mod.fit_slices(tsav, factors,  depth=3, lmbd =lmbd, verbose=False, fit_afresh=True)
         if verbose:
@@ -176,7 +176,7 @@ def step2prob_clusters_model(data, cluster_list, is1, is2, oos, verbose=False, *
         train_val_test[cluster] = train_events, val_events, test_events
         
         lmbd = int(10*8000./ df_cl[cluster])		
-		         
+
         model_coefs[cluster], model_step1prob[cluster], model_step2prob[cluster], model_likelihood[cluster], ints\
         = mod.fit_slices(tsav, factors,  depth =depth, lmbd =lmbd, verbose=False, fit_afresh=True)
         if verbose:
@@ -229,8 +229,8 @@ def ll_diff (prob_new, prob_old, train, val, test, inds, **model_par):
     ll_comb = np.zeros((11, 3))
     ll_old = np.zeros((11, 3))
     
-    from utils.accumarray import uaccum
-    from prediction.tools.helpers import strata_scale_down
+    from ...utils.accumarray import uaccum
+    from ...prediction.tools.helpers import strata_scale_down
     strata = strata_scale_down(av.event_id[inds])
         
     is1_ = np.in1d(av.event_id, train)[inds]
@@ -359,6 +359,7 @@ def write_simdata(step1probs, oos, coefs, cluster_number=None, file_ = 'simdata.
     '''
     f = file(settings.paths.join(file_), 'wb')
     if cluster_number is None:
+        cluster_number = np.zeros(np.sum(oos), dtype=int)
         s1p = step1probs[:, oos]
     else:
         cluster_number = cluster_number[oos]

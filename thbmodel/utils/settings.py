@@ -17,7 +17,7 @@ def _config_walk(x, object_type=dict, dict_convert=lambda x: x, replace_type=Def
 
 def get_config(path=None):
     source_root = Folder(__file__).up()
-    default_config_locations = [source_root.join('config.yaml')]
+    default_config_locations = [source_root.join('config.yaml'), source_root.up().join('config.yaml')]
     config_locations = [path] if path else default_config_locations
     for config_path in config_locations:
         if os.path.isfile(config_path):
