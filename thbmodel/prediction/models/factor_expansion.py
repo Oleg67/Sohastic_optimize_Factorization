@@ -1,7 +1,7 @@
 import numpy as np
 
-from utils.math import triangular_upper_idx
-from utils import dispdots
+from ...utils.math import triangular_upper_idx
+from ...utils import dispdots
 
 
 def taylor_expand_factors(X, degree):

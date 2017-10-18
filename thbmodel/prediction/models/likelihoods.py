@@ -1,7 +1,7 @@
 import numpy as np
 
-from utils.math import sleep
-from utils.accumarray import accum, unpack
+from ...utils.math import sleep
+from ...utils.accumarray import accum, unpack
 
 from ..tools.helpers import strata_scale_down
 from .probabilities import ProbabilitiesCL, ProbabilitiesHorseStrength

@@ -1,8 +1,8 @@
 import numpy as np
 import pdb
 
-from utils import get_logger
-from utils.accumarray import uaccum
+from ...utils import get_logger
+from ...utils.accumarray import uaccum
 
 from ..tools.helpers import strata_scale_down
 from .clmodel import run_cl_model
@@ -116,11 +116,13 @@ class TSModel(object):
 
     def concat_and_fit(self, strata, result, nonrunner, factorlist, ts_idx, valid, verbose=False, depth=1, lmbd=0, step=1):
         factors, valid_runs = self.concat(strata, nonrunner, factorlist)
+        #self.params.valid_runs = valid_runs
 
         ranges = ['is1', 'is2', 'oos'] if step == 1 else ['is2', 'oos', 'oos']
         mask = {}
         for rng in ranges:
             mask[rng] = self.params.__dict__[rng][ts_idx] & valid_runs
+
         assert all([np.any(mask[rng]) for rng in mask])
         stats, probs = run_cl_model(factors[valid, :], result, strata, mask[ranges[0]], mask[ranges[1]], mask[ranges[2]], verbose=False, depth=depth, lmbd=lmbd)[:2]
         # pdb.set_trace()
@@ -132,12 +134,15 @@ class TSModel(object):
             return
         nSlices = len(self.tsav)
         ts_idx, strata, result = self.cut_to_ts(self.tsav[0].run_id, self.params.run_id)
+        self.params.ts_idx = ts_idx
         valid1, valid2 = self.get_valid_mask(self.factors, self.params.is1)
 
         for sl in xrange(nSlices - 1):
             if self.params.verbose:
                 logger.info('Fitting slice %s' % sl)
-            nonrunner, fback, flay = self.tsav[sl + 1].nonrunner == 1, self.tsav[sl + 1].log_pmkt_back, self.tsav[sl + 1].log_pmkt_lay
+            nonrunner = self.tsav[sl + 1].nonrunner == 1 
+            fback = self.tsav[sl + 1].log_pmkt_back 
+            flay = self.tsav[sl + 1].log_pmkt_lay
 
             stats, probs = self.concat_and_fit(strata, result, nonrunner, [fback, flay, self.factors[:, ts_idx]], ts_idx, valid1, verbose=self.params.verbose, depth=self.params.depth, lmbd=self.params.lmbd, step=1)
             self.stats1.read(sl, valid1, stats)

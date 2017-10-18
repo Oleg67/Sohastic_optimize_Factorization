@@ -1,8 +1,8 @@
-
 import numpy as np
-from utils import DAY
-from utils.accumarray import uaccum
-from parameters import factor_build_end, factor_build_start
+
+from ...utils import DAY
+from ...utils.accumarray import uaccum
+from .parameters import factor_build_end, factor_build_start
 from ..tools.helpers import strata_scale_down
 
 
@@ -32,7 +32,7 @@ class ModelParameters(object):
             self.valid &= self.cut_mask
         self.build_mask = (self.build_start <= av.start_time) & (av.start_time < self.build_end) & self.valid
         self.is1, self.is2, self.oos = self.model_mask(self.valid, t0=self.build_end, t2=self.oos_start)
-        self.model_mask = self.is1 | self.is2 | self.oos
+        self.model_mask_ = self.is1 | self.is2 | self.oos
         if checked:
             self.check()
 

@@ -4,9 +4,9 @@ Module for calculations to adjust the influence of different factors to the runn
 from __future__ import division
 import numpy as np
 
-from utils import AttrDict, get_logger, nbtools as nbt
-from utils.accumarray import uaccum
-from utils.math import sleep
+from ...utils import AttrDict, get_logger, nbtools as nbt
+from ...utils.accumarray import uaccum
+from ...utils.math import sleep
 
 from scipy.optimize import minimize
 

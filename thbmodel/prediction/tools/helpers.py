@@ -3,9 +3,9 @@ import pprint
 import pickle
 import numpy as np
 
-from utils import intnan, Folder, settings
-from utils.accumarray import accum, uaccum, step_count
-from utils.math import intersect
+from ...utils import intnan, Folder, settings
+from ...utils.accumarray import accum, uaccum, step_count
+from ...utils.math import intersect
 
 #TODO: Move one-time-used functions back to their original modules
 

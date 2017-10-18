@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils.accumarray import uaccum
+from ...utils.accumarray import uaccum
 
 
 class Probabilities(object):

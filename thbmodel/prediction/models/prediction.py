@@ -2,8 +2,8 @@ from __future__ import division
 import numpy as np
 import numba as nb
 
-from utils import get_logger, nbtools as nbt
-from utils.accumarray import uaccum
+from ...utils import get_logger, nbtools as nbt
+from ...utils.accumarray import uaccum
 
 from . import parameters
 

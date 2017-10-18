@@ -8,7 +8,7 @@ from ..tools.helpers import strata_scale_down, spread_from_av
 
 def load_slices(path=None):
     if path is None:
-        path = settings.paths.db.join()
+        path = settings.paths.join()
     slicefiles = [f for f in listdir(path) if f.find('slice') > 0 and f.find('av.bcolz') > 0]
     tsav = {}
     for sl in xrange(len(slicefiles)):
