@@ -154,4 +154,24 @@ class TSModel(object):
         self.stats2.postprocess(valid2)
         self.finalize()
 
+    def fit_factors_only(self):
+        is_factors = self.factors[:, self.params.is1]
+        valid = (abs(np.std(is_factors, axis=1)) > 1e-10) & (np.mean(abs(is_factors) < 1e-10, axis=1) < 0.75)
+        valid_runs = np.all(~np.isnan(self.factors), axis=0)
+        valid_runs = uaccum(self.params.strata, valid_runs, func='all')
+        ranges = ['is1', 'is2', 'oos']
+        mask = {}
+        for rng in ranges:
+            mask[rng] = self.params.__dict__[rng] & valid_runs
+        assert all([np.any(mask[rng]) for rng in mask])
+        stats, probs = run_cl_model(self.factors[valid, :], self.params.result, self.params.strata, mask[ranges[0]],
+                                    mask[ranges[1]], mask[ranges[2]], verbose=False, depth=self.params.depth,
+                                    lmbd=self.params.lmbd)[:2]
+        max_prob = uaccum(self.params.strata, probs, func='max')
+        win_flag = self.params.result == 1
+        train_error = np.sum(probs[mask[ranges[0]] & win_flag] != max_prob[mask[ranges[0]] & win_flag]) / float(
+            np.sum(mask[ranges[0]] & win_flag))
+        test_error = np.sum(probs[mask[ranges[2]] & win_flag] != max_prob[mask[ranges[2]] & win_flag]) / float(
+            np.sum(mask[ranges[2]] & win_flag))
+        return train_error, test_error
 
