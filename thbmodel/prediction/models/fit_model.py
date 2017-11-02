@@ -167,11 +167,7 @@ class TSModel(object):
         stats, probs = run_cl_model(self.factors[valid, :], self.params.result, self.params.strata, mask[ranges[0]],
                                     mask[ranges[1]], mask[ranges[2]], verbose=False, depth=self.params.depth,
                                     lmbd=self.params.lmbd)[:2]
-        max_prob = uaccum(self.params.strata, probs, func='max')
         win_flag = self.params.result == 1
-        train_error = np.sum(probs[mask[ranges[0]] & win_flag] != max_prob[mask[ranges[0]] & win_flag]) / float(
-            np.sum(mask[ranges[0]] & win_flag))
-        test_error = np.sum(probs[mask[ranges[2]] & win_flag] != max_prob[mask[ranges[2]] & win_flag]) / float(
-            np.sum(mask[ranges[2]] & win_flag))
-        return train_error, test_error
+        trainll, testll = np.mean(np.log(probs[win_flag & mask[ranges[0]]])) * 1000, np.mean(np.log(probs[win_flag & mask[ranges[2]]])) * 1000
+        return trainll, testll
 
