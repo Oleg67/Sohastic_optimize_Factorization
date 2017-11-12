@@ -3,7 +3,7 @@ from ...utils import timestamp
 # earlier than this, the data are considered too old even for factor pre-processing and building
 factor_build_start = float(timestamp('2013-01-01'))
 # factor build and pre-processing shall not touch data later than this. After out of sample start, the data is used for fitting and simulation.
-factor_build_end = float(timestamp('2015-12-01'))
+factor_build_end = float(timestamp('2016-03-01'))
 
 ep = 93.97
 
