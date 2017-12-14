@@ -59,7 +59,7 @@ def Adam (data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
     for each epoh choice  b_size events and run all iteration
     repeat for next epoh
     
-    data <= DataFrame len(features)-columns of datas, the column of - event_id, 
+    data <= DataFrame len(features)-columns of data, the column of - event_id, 
             the column of- result
     features <=  names of datas 
     w <=  initial parameters of the Model
@@ -77,15 +77,13 @@ def Adam (data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
     """
 
     
-     # first distance beetwene weight parameters
+    # first distance beetwene weight parameters
     weight_dist = np.inf
     # for repeating of results
     #np.random.seed(seed)
     if w == None:
         w = np.random.normal(0, scale =1e-2, size =(len(features)))
     
-    # Step
-    iter_num = 0
     # store of grad changes
     grad_norm = np.zeros(max_iter * N_epoh +1)
     # last gradient value
@@ -132,7 +130,9 @@ def Adam (data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
                 print 'SGD covergence', t
                 break
                 #return w, grad_norm , iter_num
-               
+        
+        
+        
             if verbose:
                 #print 'w  ', w
                 print 'iteration', iter_num, 'dist ',weight_dist
@@ -141,11 +141,10 @@ def Adam (data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
                 print "w overcome"
                 break
         
-    return w, grad_norm ,t
-    
+    return w, grad_norm ,t    
 
 def AdaMax(data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
-                                moment1 = 0.85, moment2 = 0.99, la = 10., max_iter=1e2,
+                                moment1 = 0.9, moment2 = 0.99, la = 10., max_iter=100,
                                 eps = 1e-4,  min_weight_dist=1e-3, seed=42, verbose=False):
     """ 
     Adam Max optimization method for liniar Model
@@ -228,37 +227,36 @@ def AdaMax(data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
             if np.any(w == np.nan):
                 print "w overcome"
                 break
-        
-    return w, grad_norm, t
-    
+
+	return w, grad_norm, t
+	
 
 def DF(mask, factors, av, factors_names, other_names):
 	"""
 		create DataFrame from av datas
 	"""
-	
-    df = pd.DataFrame(data =factors[:, mask].T , columns = factors_names)
-    
-    for col in other_names :
-        df[col] = av[col][mask]
-        
-    return df
-    
+	df = pd.DataFrame(data =factors[:, mask].T , columns = factors_names)
 
-def LL_f (df_t, winner, w):
+	for col in other_names :
+		df[col] = av[col][mask]
+	
+	return df
+
+
+def LL_t (df_t, winner, w):
 	"""
 	return likelihood 
 	df_t <= 3d tensor of datas
 	winner <= 2d tensor of winners
 	w <= 1d tensor parameters model
 	"""
-    
-    S = np.einsum('nij, j -> ni', df_t,w) 
-    S = np.where(np.isnan(S), -np.inf, S)
-    p = softmax(S)  
-    LL = np.log(np.einsum('ni, ni -> n', p, winner)).mean()
-    
-    return LL
+
+	S = np.einsum('nij, j -> ni', df_t,w) 
+	S = np.where(np.isnan(S), -np.inf, S)
+	p = softmax(S)  
+	LL = np.log(np.einsum('ni, ni -> n', p, winner)).mean()
+
+	return LL
     
 
 def G_step_factorize_T(df_t, winner, t_len, w, V, verbose=False):
@@ -461,7 +459,7 @@ def Adam_factorize_T (data, features,  w = None, V = None, rang = 2, b_size =100
     """
 
     
-     # first distance beetwene weight parameters
+    # first distance beetwene weight parameters
     weight_dist = np.inf
     # for repeating of results
     #np.random.seed(seed)
@@ -537,5 +535,198 @@ def Adam_factorize_T (data, features,  w = None, V = None, rang = 2, b_size =100
                 return w, grad_norm , t
         
     return w_par, grad_norm , t
-    
 
+ 
+def AdaMax_iter_time(data, features,  w = None, b_size =100, eta=1e-3, 
+                                moment1 = 0.85, moment2 = 0.99, la = 10., N_epoh =10, direction =False,
+                                eps = 1e-4,  min_weight_dist=1e-3, seed=42, verbose=False):
+    """ 
+    Adam  Max optimization method for the Model
+    for each epoh run all events by batch size  =b_size
+    repeat for next epoh
+    
+    data <= DataFrame len(features)-columns of datas, the column of - event_id, 
+            the column of- result
+    features <=  names of datas 
+    w <=  initial parameters of the liniar Model 
+    b_size  <=  batch size
+    eta <=  learning step
+    N_epoh <= number of epohs
+    direction <= direction of run (True) from old to new
+                 (False) from new to old
+    moment1 <=  first moment
+    moment2 <=  second moment
+    la <=  regularization constant
+    max_iter <=  maximum of iterations 
+    eps <=  approximantely zero 
+    min_weight_dist <=  distanse for covergence
+    seed <=  random constant 
+    verbose <=  flag debaging
+    """
+    
+    # first distance beetwene weight parameters
+    weight_dist = np.inf
+    # for repeating of results
+    #np.random.seed(seed)
+    if w == None:
+        w = np.random.normal(0, scale =1e-2, size =(len(features)))
+        #w = np.ones((len(features)))* 0.01
+    
+    # Step
+    iter_num = 0
+    
+    # last gradient value
+    last_grad = np.zeros_like(w) 
+    # last gradient's variation value
+    std_grad = np.zeros_like(w)
+    # unique events in data set
+    events_list = np.unique(data['event_id'])
+    step_max = len (events_list)/b_size
+    # store of grad changes
+    grad_norm = np.zeros(N_epoh *step_max +1)
+    # Main loop
+    for  i_ep  in range(1, N_epoh+1):
+                
+        for step_ in range(1, step_max +1):
+            
+            if direction:
+                r_event = events_list[b_size*(step_-1): b_size*(step_)]
+            else:
+                if step_ ==1:
+                     r_event = events_list[-b_size*(step_): ]
+                r_event = events_list[-b_size*(step_): -b_size*(step_-1)]
+            df = data.loc[np.in1d(data['event_id'], r_event),:]
+            
+            df_t, winner_t, t_len = DF_to_tensor(df, features)
+            
+            w_N = w - eta *moment1 *last_grad # for Nesterov momentum
+            # get gradient with  Nesterov momemtum + L2 regularisation
+            grad_ = G_step(df_t, winner_t, t_len, w_N, verbose=False) + la * w_N  # gradient and L2
+            #grad_ = G_step(df_t, winner_t, t_len, w, verbose=False) + la * w  # gradient and L2
+            last_grad = moment1 * last_grad + (1-moment1) * grad_ # Update weight first moment estimate
+            # Update weight second moment estimate exponent power infinity
+            std_grad = np.max(np.vstack((moment2 * std_grad, np.abs(grad_))), axis =0) # Update weight second moment estimate 
+            
+            t = (i_ep -1)*step_max + step_
+            last_grad_ = last_grad/(1 - np.power(moment1, t)) # Correct first moment estimate
+        
+            w = w - eta *last_grad_/std_grad
+        
+            weight_dist = np.linalg.norm(last_grad, ord=2)/len(w)
+            grad_norm [t] = weight_dist
+            
+            if (weight_dist <= min_weight_dist):
+                print 'SGD covergence', t
+                break
+                return w, grad_norm , iter_num*step_
+        
+            if verbose:
+                #print 'w  ', w
+                print 'iteration', iter_num, 'dist ',weight_dist
+         
+            if np.any((w == np.inf ) |(w == -np.inf)):
+                print "w overcome"
+                break
+        
+    return w, grad_norm , t   
+    
+    
+def AdaMax_time_step(data, features,  w = None, b_size =100, eta=1e-3, 
+                                moment1 = 0.85, moment2 = 0.99, la = 10., max_iter =10,
+                                eps = 1e-4,  min_weight_dist=1e-3, seed=42, verbose=False):
+    """ 
+    Adam  Max optimization method for the Model
+    for each batch of event run desent for max_iter
+    repeat for next batch that older then last
+    
+    data <= DataFrame len(features)-columns of datas, the column of - event_id, 
+            the column of- result
+    features <=  names of datas 
+    w <=  initial parameters of the liniar Model 
+    b_size  <=  batch size
+    eta <=  learning step
+    N_epoh <= number of epohs
+    moment1 <=  first moment
+    moment2 <=  second moment
+    la <=  regularization constant
+    max_iter <=  maximum of iterations 
+    eps <=  approximantely zero 
+    min_weight_dist <=  distanse for covergence
+    seed <=  random constant 
+    verbose <=  flag debaging
+    """
+    
+    # first distance beetwene weight parameters
+    weight_dist = np.inf
+    # for repeating of results
+    #np.random.seed(seed)
+    if w == None:
+        w = np.random.normal(0, scale =1e-2, size =(len(features)))
+        #w = np.ones((len(features)))* 0.01
+    
+    # Step
+    step_ = 0
+    
+    # last gradient value
+    last_grad = np.zeros_like(w) 
+    # last gradient's variation value
+    std_grad = np.zeros_like(w)
+    # unique events in data set
+    events_list = np.unique(data['event_id'])
+    step_max = len (events_list)/b_size
+    # store of grad changes
+    grad_norm = np.zeros(max_iter *step_max +1)
+    # Main loop
+    for step_ in range (1, step_max +1):
+        
+        r_event = events_list[-b_size*(step_ +1): -b_size*step_]
+        df = data.loc[np.in1d(data['event_id'], r_event),:]
+        
+        df_t, winner_t, t_len = DF_to_tensor(df, features)
+        for iter_num  in range(1, max_iter +1):
+            
+            w_N = w - eta *moment1 *last_grad # for Nesterov momentum
+            # get gradient with  Nesterov momemtum + L2 regularisation
+            grad_ = G_step(df_t, winner_t, t_len, w_N, verbose=False) + la * w_N  # gradient and L2 
+            #grad_ = G_step(df_t, winner_t, t_len, w, verbose=False) + la * w  # gradient and L2 
+            last_grad = moment1 * last_grad + (1-moment1) * grad_ # Update weight first moment estimate
+            # Update weight second moment estimate expanent power infinity
+            std_grad = np.max(np.vstack((moment2 * std_grad, np.abs(grad_))), axis =0) # Update weight second moment estimate 
+        
+            t = max_iter *(step_-1) + iter_num
+            last_grad_ = last_grad/(1 - np.power(moment1, t)) # Correct first moment estimate
+        
+            w = w - eta *last_grad_/std_grad
+        
+            weight_dist = np.linalg.norm(last_grad, ord=2)/len(w)
+            grad_norm [t]   = weight_dist
+            
+        if (weight_dist <= min_weight_dist):
+            print 'SGD covergence', t
+            break
+            return w, grad_norm , iter_num*step_
+        
+        if verbose:
+            #print 'w  ', w
+            print 'iteration', iter_num, 'dist ',weight_dist
+        
+        if np.any(w == np.nan):
+            print "w overcome"
+            break
+        
+    return w, grad_norm , t
+
+def LL_t_f (df_t, winner, w, V):
+	"""
+	return likelihood 
+	df_t <= 3d tensor of datas
+	winner <= 2d tensor of winners
+	w <= 1d tensor parameters model
+	"""
+	S = np.einsum('nij, j -> ni', df_t,w) + np.einsum('nij, jr, kr, nik  -> ni', df_t,V,V,df_t)/2 - \
+			np.einsum('nij, jr, jr, nij  -> ni', df_t,V,V,df_t)/2
+	S = np.where(np.isnan(S), -np.inf, S)
+	p = softmax(S)
+	LL = np.log(np.einsum('ni, ni -> n', p, winner)).mean()
+	
+	return LL
