@@ -594,7 +594,8 @@ def AdaMax_iter_time(data, features,  w = None, b_size =100, eta=1e-3,
             else:
                 if step_ ==1:
                      r_event = events_list[-b_size*(step_): ]
-                r_event = events_list[-b_size*(step_): -b_size*(step_-1)]
+                else:
+                     r_event = events_list[-b_size*(step_): -b_size*(step_-1)]
             df = data.loc[np.in1d(data['event_id'], r_event),:]
             
             df_t, winner_t, t_len = DF_to_tensor(df, features)
