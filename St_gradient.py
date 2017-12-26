@@ -227,8 +227,8 @@ def AdaMax(data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
             if np.any(w == np.nan):
                 print "w overcome"
                 break
-
-	return w, grad_norm, t
+    return w, grad_norm, t
+    
 	
 
 def DF(mask, factors, av, factors_names, other_names):
@@ -254,9 +254,10 @@ def LL_t (df_t, winner, w):
 	S = np.einsum('nij, j -> ni', df_t,w) 
 	S = np.where(np.isnan(S), -np.inf, S)
 	p = softmax(S)  
-	LL = np.log(np.einsum('ni, ni -> n', p, winner)).mean()
+	LL = np.log(np.einsum('ni, ni -> n', p, winner))
+	LL = LL[np.isfinite(LL)]
 
-	return LL
+	return np.nanmean(LL)
     
 
 def G_step_factorize_T(df_t, winner, t_len, w, V, verbose=False):
@@ -728,6 +729,7 @@ def LL_t_f (df_t, winner, w, V):
 			np.einsum('nij, jr, jr, nij  -> ni', df_t,V,V,df_t)/2
 	S = np.where(np.isnan(S), -np.inf, S)
 	p = softmax(S)
-	LL = np.log(np.einsum('ni, ni -> n', p, winner)).mean()
-	
-	return LL
+	LL = np.log(np.einsum('ni, ni -> n', p, winner))
+	LL = LL[np.isfinite(LL)]
+
+	return np.nanmean(LL)
