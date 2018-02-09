@@ -1,6 +1,14 @@
 import numpy as np
 import pandas as pd
 
+from thbmodel.utils.accumarray import accum, unpack
+from thbmodel.utils import get_logger
+from thbmodel.prediction.tools.helpers import strata_scale_down
+
+import matplotlib.pyplot as plt
+
+
+logger = get_logger(__package__)
 
 def softmax(x, axis =1):
     """
@@ -222,18 +230,18 @@ def AdaMax(data, features,  w = None, b_size =100, eta=1e-3, N_epoh =10,
         
             if verbose:
                 #print 'w  ', w
-                print 'iteration', iter_num, 'dist ',weight_dist
+                print 'epoh ', i, ' iteration ', t, ' dist ',weight_dist
         
             if np.any(w == np.nan):
                 print "w overcome"
                 break
-    return w, grad_norm, t
     
+    return w, grad_norm, t
 	
 
 def DF(mask, factors, av, factors_names, other_names):
 	"""
-		create DataFrame from av datas
+	create DataFrame from av datas
 	"""
 	df = pd.DataFrame(data =factors[:, mask].T , columns = factors_names)
 
@@ -733,3 +741,198 @@ def LL_t_f (df_t, winner, w, V):
 	LL = LL[np.isfinite(LL)]
 
 	return np.nanmean(LL)
+
+class SGD(object):
+    """ 
+    Stohastic gradient dissent  optimization method for liniar Model 
+    of factorization models
+    for each epoh choice  b_size events and run all iteration
+    repeat for next epoh
+    
+    coef <=  the initial parameters of the Model, default = None
+    b_size  <=  the batch size , { integer or None or 'coplex'}, default = 100
+    step <=  the learning step, default = 1e-3
+    N_epoh <= the number of epohs, default = 10
+    method <= the method of optimization such as {'Adam', 'AdaMax'), default = 'AdaMax'
+    rank <= for factorization model the rank of factorization, default = None
+    moment1 <=  the first moment, default = 0.9
+    moment2 <=  the second moment, default = 0.99
+    lmbd <=  the regularization constant, default = 10
+    reg <= method regularization, default = L2
+    max_iteration <=  the maximum of iterations , default = 100
+    eps <=  approximantely zero , default = 1e-4
+    min_weight_dist <=  the distanse for covergence, default = 1e-3
+    seed <=  the random constant , default = None
+    verbose <=  flag debaging, default = False
+    """
+    
+    
+    def __init__(self, coef = None, b_size=100, step=1e-3, N_epoh=10, method='AdaMax', 
+                    moment1=0.9, moment2=0.99, lmbd=10., max_iteration=100, reg ='L2',
+                    eps=1e-4,  min_weight_dist=1e-3, seed=None, verbose=False):
+        
+        self.coef = None
+        self.b_size = b_size
+        self.step = step
+        self.N_epoh = N_epoh
+        self.method = method
+        self.moment1 = moment1
+        self.moment2 = moment2
+        self.lmbd = lmbd
+        self.max_iteration = max_iteration
+        self.reg = reg
+        
+        self.eps = eps
+        self.min_weight_dist = min_weight_dist
+        self.seed = seed
+        self.verbose = verbose
+        
+    def fit(self, X, y, group_idx, weight=None):
+        """
+        build the parameters of model - coef [j]
+         
+        X <= train data as matrix [i,j] 
+        y <= train target as vector [i]
+        weight <= weights of events or samples [i]
+        group_idx <= group of rows in data  [i]      
+        """
+        #initial parameters
+        if self.coef is None:
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+        elif self.coef.shape[0] != X.shape[1]:
+            logger.info('The shape of coef is not the same as X  %i'%X.shape[1])
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+        if weight is None:
+            weight = np.ones_like(y)
+        
+        # first distance beetwene parameters
+        weight_dist = np.inf
+        # for repeating of results
+        np.random.seed(self.seed)
+        
+        # store of grad changes
+        self.grad_norm = np.zeros(self.max_iteration * self.N_epoh +1)
+        
+        # FOR NESTEROV OPTIMIZATION
+        # last gradient value
+        last_grad = np.zeros_like(self.coef) 
+        # last gradient's variation value
+        std_grad = np.zeros_like(self.coef)
+        # unique events in data set
+        events_list = np.unique(group_idx)
+
+        # MAIN LOOP
+        for i in range(self.N_epoh):
+            # random choice the events of b_size
+            if isinstance(self.b_size, int):
+                r_events = np.random.choice(events_list, size = self.b_size)
+            
+            elif self.b_size == 'complex':
+                min_b_size = 10
+                b_size_i = np.linspace(min_b_size, len(events_list)/2, num =self.N_epoh).astype(int)
+                r_events = np.random.choice(events_list, size = b_size_i[i])
+            else:
+                _size = 0.8
+                r_events = np.random.choice(events_list, size =int(len(events_list)*_size))
+    
+            mask = np.in1d(group_idx, r_events)
+            X_train, y_train = X[mask,:], y[mask]
+            strata, weight_t = group_idx[mask], weight[mask]
+       
+            strata = strata_scale_down(strata)
+            if self.verbose:
+                logger.info('Fitting epoh %s' % (i+1))
+            
+            for iter_num in range(1, self.max_iteration +1):
+                coef_N = self.coef - self.step * self.moment1 * last_grad # for Nesterov momentum
+                if self.reg == 'L1':
+                     # get gradient with  Nesterov momemtum + L1 regularisation
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, coef_N) + self.lmbd * np.sign(coef_N) # gradient and L1
+                else: 
+                    # get gradient with  Nesterov momemtum + L2 regularisation
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, coef_N) + self.lmbd * coef_N # gradient and L2
+                
+                
+                last_grad = self.moment1 * last_grad + (1-self.moment1) * _grad_ # Update weight first moment estimate
+                t = i * self.max_iteration + iter_num
+                _last_grad_ = last_grad/(1 - np.power(self.moment1, t)) # Correct first moment estimate
+                if  self.method == 'AdaMax':
+                    std_grad = np.max(np.vstack((self.moment2 * std_grad, np.abs(_grad_))), axis =0) # Update weight second moment estimate 
+                    
+                    self.coef = self.coef -  self.step * _last_grad_/std_grad
+                elif self.method == 'Adam':
+                    std_grad = self.moment2 * std_grad + (1-self.moment2)* _grad_ * _grad_ # Update weight second moment estimate 
+                    _std_grad_ = std_grad/(1 - np.power(self.moment2, t)) # Correct second moment estimate
+                    
+                    self.coef = self.coef - self.step * _last_grad_/(np.square(_std_grad_) + self.eps)
+                else:
+                    logger.info('ERROR    : Method must be AdaMax or Adam')
+                    return
+
+                weight_dist = np.linalg.norm(last_grad, ord=2)/len(self.coef)
+                self.grad_norm [t] = weight_dist
+                
+                if (weight_dist <= self.min_weight_dist) :
+                    if self.verbose:
+                        logger.info('Method Covariance:  distatnce {} epoh {}'.format(weight_dist, i+1))
+                    break
+
+                if self.verbose:
+                    logger.info('Epoh {},  itaration {},  distatnce {}'.format(i+1, iter_num, weight_dist))
+
+                if not np.isfinite(self.coef).all():
+                    logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
+                    return
+
+    def predict_prob(self, X, group_idx):
+        """
+        predict probability to win in the group_idx  for data X
+        """
+        if (self.coef is None) or not np.isfinite(self.coef).all():
+            logger.info('ERROR : model is not define')
+            return
+        if self.coef.shape[0] != X.shape[1]:
+            logger.info('The shape of the X is not the same as the coef  %i'%self.coef.shape[0]) 
+            return 
+        
+        strata = strata_scale_down(group_idx)
+        strenth, expstrenth, expsum = self.preprocessing(X, strata, self.coef)
+        prob = expstrenth/expsum
+        prob = np.where(np.isfinite(prob), prob, 1.) # in the case inf/inf = 1.
+        
+            
+        return prob 
+        
+    def predict(self, X, group_idx):
+        """
+        predict winner in the group_idx for data X
+        """
+        strata = strata_scale_down(group_idx)
+        prob = self.predict_prob(X, strata)
+        return (prob >= unpack(strata, accum(strata, prob, 'max'))).astype(int)
+        
+        
+    def preprocessing(self, X, strata, theta):
+
+        
+        strength = np.dot(X, theta) 
+        expstrength = np.exp(strength)
+        expsum = unpack(strata, accum(strata, expstrength))
+        return strength, expstrength, expsum    
+        
+        
+    def first_derivative(self, X, y, weight, strata, theta):
+        
+        strenth, expstrenth, expsum = self.preprocessing(X, strata, theta)
+        prob = expstrenth/expsum
+        delta = (y - prob) * weight
+            
+        return -np.dot(delta, X)
+    
+    def learning_plot(self):
+        
+        plt.figure(figsize=(20, 10))
+        plt.plot(self.grad_norm, label ='Learning score')
+        plt.legend()
+        plt.show()
+        print self.grad_norm[self.grad_norm> 0][-1]
