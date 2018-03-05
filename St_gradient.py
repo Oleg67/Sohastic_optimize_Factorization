@@ -5,6 +5,7 @@ from thbmodel.utils.accumarray import accum, unpack
 from thbmodel.utils import get_logger
 from thbmodel.prediction.tools.helpers import strata_scale_down
 
+from scipy.optimize import minimize_scalar
 import matplotlib.pyplot as plt
 
 
@@ -771,7 +772,7 @@ class SGD(object):
                     moment1=0.9, moment2=0.99, lmbd=10., max_iteration=100, reg ='L2',
                     eps=1e-4,  min_weight_dist=1e-3, seed=None, verbose=False):
         
-        self.coef = None
+        self.coef = coef
         self.b_size = b_size
         self.step = step
         self.N_epoh = N_epoh
@@ -884,7 +885,7 @@ class SGD(object):
                     logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
                     return
 
-    def predict_prob(self, X, group_idx):
+    def predict_proba(self, X, group_idx):
         """
         predict probability to win in the group_idx  for data X
         """
@@ -908,7 +909,7 @@ class SGD(object):
         predict winner in the group_idx for data X
         """
         strata = strata_scale_down(group_idx)
-        prob = self.predict_prob(X, strata)
+        prob = self.predict_proba(X, strata)
         return (prob >= unpack(strata, accum(strata, prob, 'max'))).astype(int)
         
         
@@ -936,3 +937,346 @@ class SGD(object):
         plt.legend()
         plt.show()
         print self.grad_norm[self.grad_norm> 0][-1]
+
+class SGD_time(SGD):
+    
+    def __init__(self, direction='forward', t_method='iter_time'):
+        
+        super(SGD_time, self).__init__()
+        
+        self.t_method = t_method
+        self.direction = direction
+        
+    #if self.t_method == 'iter_time':
+            
+        def fit(self, X, y, group_idx, weight=None):
+            pass       
+                
+
+class SGD_boosting(SGD):
+    """
+    Boosting classifications  model on SGD model
+    n_estimate <= number of models 
+    l_rate <= learning step for each model
+    alfa <= coef for events where the model is correct
+    bound <= bound for outliers
+    optimize_rate <= l_rate from optimize if True
+    """
+    defaults = SGD().__dict__
+
+    def __init__(self, n_estimate=10, l_rate=0.98, alfa=0.5, bound=0.9, optimize_rate=False, **kwargs) :
+        
+        for k, v in kwargs.items():
+            if k not in self.defaults:
+                raise TypeError("%s got an unexpected keyword argument '%s'" % (type(self).__name__, k))
+            self.defaults[k] = v
+            
+        self.n_estimate = n_estimate
+        self.l_rate = l_rate
+        self.alfa = alfa
+        self.bound = bound
+        self.optimize_rate = optimize_rate
+        self.verbose = self.defaults['verbose']
+        
+    def fit(self, X, y, group_idx, weights=None):
+        """
+        X , train data 
+        y,  target lables {0,1} in each event is only one 1
+        group_idx,  events 
+        weights, weight of each event 
+        """
+        self._models = []
+        self._coefs = []
+        
+        if weights is None:
+            
+            weights = np.ones_like(y)
+        
+        for i in range(self.n_estimate):
+            
+            model = SGD()
+            for k,v in self.defaults.items():
+                setattr(model, k, self.defaults.get(k,v))
+            
+            
+            model.fit(X, y, group_idx, weights)
+            
+            self._models.append(model)
+            #self._coefs.append(self.l_rate**i)
+            if (i > 0) & self.optimize_rate:
+                f_ll = lambda ax: np.nanmean(-np.log(self.predict_proba(X, group_idx, N=-1) \
+                                                     + ax * model.predict_proba(X, group_idx)))
+                res = minimize_scalar(f_ll, bounds=(0, 1.5), method='bounded')
+                logger.info( 'rate {}'.format(res.x))
+                self._coefs.append(res.x)
+            else:
+                self._coefs.append(self.l_rate**i)
+            
+            if self.verbose:
+                logger.info('fit  {} model, get new weights'.format(i+1))
+            weights = self.get_weights(X, y, group_idx)
+            
+        return
+            
+    def get_weights(self, X, y, group_idx):
+        """
+        return new weights of events to build new model
+        """
+        probs = self.predict_proba(X,  group_idx)
+        correct_winners, corect_group_idx = correct_pred(probs, group_idx, y)
+        strata = strata_scale_down(group_idx)
+        
+        winner_probs = unpack(strata, probs[y.astype(bool)])
+        
+        winner_probs = 1 - winner_probs
+        #exclude outlies
+        winner_probs = np.where(winner_probs >= (winner_probs.max() *self.bound), 0., winner_probs)
+        #different weights for correct and incorrect events
+        winner_probs = np.where(correct_winners, winner_probs * self.alfa, winner_probs)
+            
+        #winner_probs = float(winner_probs) / winner_probs.sum()
+        if self.verbose:
+            logger.info('winner_probs {}'.format(winner_probs.shape))
+                
+        winner_probs = winner_probs / winner_probs.max() # norm_weigths
+        
+        return winner_probs 
+
+    def predict_proba(self, X, group_idx, N=0):
+        """
+        predict probability for each event with probability to class 1
+        sum of probability in each event (group_idx) = 1
+        """
+        pred = np.zeros(X.shape[0])
+        norm = 0
+        _models = self._models
+        _coefs = self._coefs
+        
+        if N == -1:
+            _models = self._models[:-1]
+            _coefs = self._coefs[:-1]
+        
+        for algo, coef in zip(_models, _coefs):
+           
+            pred += coef * algo.predict_proba(X, group_idx)
+            norm += coef 
+        if self.verbose:
+            logger.info('predict_proba: prediction with %i algoritms' % len(self._models))
+        
+        return pred/norm 
+        
+        
+class SGD_factors(SGD):
+    """ 
+    Stohastic gradient dissent  optimization method for liniar Model 
+    of factorization models
+    for each epoh choice  b_size events and run all iteration
+    repeat for next epoh
+    
+    coef <=  the initial parameters of the Model, default = None
+    b_size  <=  the batch size , { integer or None or 'coplex'}, default = 100
+    step <=  the learning step, default = 1e-3
+    N_epoh <= the number of epohs, default = 10
+    method <= the method of optimization such as {'Adam', 'AdaMax'), default = 'AdaMax'
+    rank <= for factorization model the rank of factorization, default = None
+    moment1 <=  the first moment, default = 0.9
+    moment2 <=  the second moment, default = 0.99
+    lmbd <=  the regularization constant, default = 10
+    reg <= method regularization, default = L2
+    max_iteration <=  the maximum of iterations , default = 100
+    eps <=  approximantely zero , default = 1e-4
+    min_weight_dist <=  the distanse for covergence, default = 1e-3
+    seed <=  the random constant , default = None
+    verbose <=  flag debaging, default = False
+    """
+    
+    defaults = SGD().__dict__
+
+    def __init__(self, rang=5, V_coef=None, **kwargs) :
+        
+        for k, v in kwargs.items():
+            if k not in self.defaults:
+                raise TypeError("%s got an unexpected keyword argument '%s'" % (type(self).__name__, k))
+            self.defaults[k] = v
+        for k,v in self.defaults.items():
+            setattr(self, k, v)
+        
+        self.V_coef = V_coef
+        self.rang = rang
+        self.verbose = self.defaults['verbose']
+        
+    def fit(self, X, y, group_idx, weight=None):
+        """
+        build the parameters of model - coef [j]
+         
+        X <= train data as matrix [i,j] 
+        y <= train target as vector [i]
+        weight <= weights of events or samples [i]
+        group_idx <= group of rows in data  [i]      
+        """
+        #initial parameters
+        if (self.coef is None)| (self.V_coef is None) :
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+            self.V_coef = np.random.normal(0, scale =1e-2, size =(self.rang, X.shape[1]))
+        elif (self.coef.shape[0] != X.shape[1])| (self.V_coef.shape[1] != X.shape[1]):
+            logger.info('The shape of coef is not the same as X  %i'%X.shape[1])
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+            self.V_coef = np.random.normal(0, scale =1e-2, size =(self.rang, X.shape[1]))
+        if weight is None:
+            weight = np.ones_like(y)
+        
+        m,n = self.V_coef.shape
+        #common vector parameters
+        w_par = np.vstack((self.coef.reshape(1,-1), self.V_coef)).flatten()
+        # Step
+        # first distance beetwene parameters
+        weight_dist = np.inf
+        # for repeating of results
+        np.random.seed(self.seed)
+        
+        # store of grad changes
+        self.grad_norm = np.zeros(self.max_iteration * self.N_epoh +1)
+        
+        # FOR NESTEROV OPTIMIZATION
+        # last gradient value
+        last_grad = np.zeros_like(w_par) 
+        # last gradient's variation value
+        std_grad = np.zeros_like(w_par)
+        # unique events in data set
+        events_list = np.unique(group_idx)
+
+        # MAIN LOOP
+        for i in range(self.N_epoh):
+            # random choice the events of b_size
+            if isinstance(self.b_size, int):
+                r_events = np.random.choice(events_list, size = self.b_size)
+            
+            elif self.b_size == 'complex':
+                min_b_size = 10
+                b_size_i = np.linspace(min_b_size, len(events_list)/2, num =self.N_epoh).astype(int)
+                r_events = np.random.choice(events_list, size = b_size_i[i])
+            else:
+                _size = 0.8
+                r_events = np.random.choice(events_list, size =int(len(events_list)*_size))
+    
+            mask = np.in1d(group_idx, r_events)
+            X_train, y_train = X[mask,:], y[mask]
+            strata, weight_t = group_idx[mask], weight[mask]
+       
+            strata = strata_scale_down(strata)
+            if self.verbose:
+                logger.info('Fitting epoh %s' % (i+1))
+            
+            for iter_num in range(1, self.max_iteration +1):
+                w_par_N = w_par - self.step * self.moment1 * last_grad # for Nesterov momentum
+                
+                w = w_par_N[:n] # return to original shape
+                V = w_par_N[n:].reshape(m, n)
+                if self.reg == 'L1':
+                     # get gradient with  Nesterov momemtum + L1 regularisation
+                    
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, w, V) + self.lmbd * np.sign(w_par_N) # gradient and L1
+                else: 
+                    # get gradient with  Nesterov momemtum + L2 regularisation
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, w, V) + self.lmbd * w_par_N # gradient and L2
+                
+                
+                last_grad = self.moment1 * last_grad + (1-self.moment1) * _grad_ # Update weight first moment estimate
+                t = i * self.max_iteration + iter_num
+                _last_grad_ = last_grad/(1 - np.power(self.moment1, t)) # Correct first moment estimate
+                if  self.method == 'AdaMax':
+                    std_grad = np.max(np.vstack((self.moment2 * std_grad, np.abs(_grad_))), axis =0) # Update weight second moment estimate 
+                    
+                    w_par = w_par -  self.step * _last_grad_/std_grad
+                    
+                elif self.method == 'Adam':
+                    std_grad = self.moment2 * std_grad + (1-self.moment2)* _grad_ * _grad_ # Update weight second moment estimate 
+                    _std_grad_ = std_grad/(1 - np.power(self.moment2, t)) # Correct second moment estimate
+                    
+                    w_par = w_par - self.step * _last_grad_/(np.square(_std_grad_) + self.eps)
+                else:
+                    logger.info('ERROR    : Method must be AdaMax or Adam')
+                    return
+
+                weight_dist = np.linalg.norm(last_grad, ord=2)/len(w_par)
+                self.grad_norm [t] = weight_dist
+                
+                if (weight_dist <= self.min_weight_dist) :
+                    if self.verbose:
+                        logger.info('Method Covariance:  distatnce {} epoh {}'.format(weight_dist, i+1))
+                    break
+
+                if self.verbose:
+                    logger.info('Epoh {},  itaration {},  distatnce {}'.format(i+1, iter_num, weight_dist))
+
+                if not np.isfinite(self.coef).all():
+                    logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
+                    return
+        self.coef = w_par[:n] # return to original shape
+        self.V_coef = w_par[n:].reshape(m, n)
+
+    def first_derivative(self, X, y, weight, strata, theta, V):
+        
+        strenth, expstrenth, expsum, X_m = self.preprocessing(X, strata, theta, V)
+        prob = expstrenth/expsum
+        delta = (y - prob) * weight
+        der_by_dw = -np.dot(delta, X)
+        dS_by_dV = np.einsum('ijk,rk -> ijr', X_m, V) - np.einsum('rj,ij -> ijr', V, X*X)
+        der_by_dV = -np.einsum('i,ijr -> rj', delta, dS_by_dV)
+        
+        return np.vstack((der_by_dw.reshape(1,-1), der_by_dV)).flatten()
+        
+        
+    def preprocessing(self, X, strata, theta, V):
+        
+        X_m = np.einsum('ij,ik -> ijk', X, X)
+        V_m = np.einsum('rj,rk -> jk', V, V)
+        strength = np.dot(X, theta) + np.einsum('ijk,jk -> i', X_m, V_m)/2 - np.einsum('ijj,jj -> i', X_m, V_m)/2
+        expstrength = np.exp(strength)
+        expsum = unpack(strata, accum(strata, expstrength))
+        return strength, expstrength, expsum, X_m
+    
+
+    def predict_proba(self, X, group_idx):
+        """
+        predict probability to win in the group_idx  for data X
+        """
+        if ((self.coef is None)&(self.V_coef is None))or not np.isfinite(self.coef).all()\
+                     or not np.isfinite(self.V_coef).all():
+            logger.info('ERROR : model is not define')
+            return
+        if (self.coef.shape[0] != X.shape[1])| (self.V_coef.shape[1] != X.shape[1]):
+            logger.info('The shape of the X is not the same as the coef  %i'%self.coef.shape[0]) 
+            return 
+        
+        strata = strata_scale_down(group_idx)
+        strenth, expstrenth, expsum, _ = self.preprocessing(X, strata, self.coef, self.V_coef)
+        prob = expstrenth/expsum
+        prob = np.where(np.isfinite(prob), prob, 1.) # in the case inf/inf = 1.
+        
+            
+        return prob
+        
+
+
+def correct_pred(P, group_idx, y):
+    """
+    P vector of the probability to win in group_idx
+    y winners in group_idx
+        
+    return vector length group_idx where True in full group_idx  if the  prediction of  winners are correct for this group_idx, 
+           and vector length unique group_idx where True if correct of the winner in this group_idx
+    """
+    c_pred = np.full(P.shape, fill_value=False, dtype=bool)
+    
+    strata = strata_scale_down(group_idx)
+    assert y.shape[0] == group_idx.shape[0], 'the vectors winners and group_idx must be the same legnth'
+    assert P.shape[0] == y.shape[0], 'the vectors winners and probs must be the same legnth'
+    
+    c_pred_group = np.full((len(np.unique(strata))), 0, dtype=int)
+    
+    max_P = unpack(strata, accum(strata, P, 'max'))
+    c_pred = unpack(strata, (P >= max_P)[y.astype(bool)])
+    c_pred_group = accum(strata, c_pred, 'first')
+            
+    return c_pred, c_pred_group
