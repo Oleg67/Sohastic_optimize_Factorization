@@ -960,7 +960,7 @@ class SGD_boosting(SGD):
     l_rate <= learning step for each model
     alfa <= coef for events where the model is correct
     bound <= bound for outliers
-    optimize_rate <= l_rate from optimize if True
+    optimize_rate <= l_rate from {'optimize', 'correct', None}
     """
     defaults = SGD().__dict__
 
@@ -991,6 +991,7 @@ class SGD_boosting(SGD):
         if weights is None:
             
             weights = np.ones_like(y)
+                    
         
         for i in range(self.n_estimate):
             
@@ -1003,19 +1004,33 @@ class SGD_boosting(SGD):
             
             self._models.append(model)
             #self._coefs.append(self.l_rate**i)
-            if (i > 0) & self.optimize_rate:
+            if (i > 0) & (self.optimize_rate == 'optimize'):
                 f_ll = lambda ax: np.nanmean(-np.log(self.predict_proba(X, group_idx, N=-1) \
                                                      + ax * model.predict_proba(X, group_idx)))
                 res = minimize_scalar(f_ll, bounds=(0, 1.5), method='bounded')
                 logger.info( 'rate {}'.format(res.x))
                 self._coefs.append(res.x)
+                
+            elif (self.optimize_rate == 'correct'):
+                if i == 0:
+                    correct_0 = np.sum(weights[(model.predict(X, group_idx) ==1)& (y ==1)])/ weights[y ==1].sum()
+                    correct = correct_0
+                else:
+                    correct = np.sum(weights[(model.predict(X, group_idx) ==1)& (y ==1)])/ weights[y ==1].sum()
+            
+                
+                logger.info('correct {}'.format(correct))
+                self._coefs.append(correct / correct_0)
+            
             else:
                 self._coefs.append(self.l_rate**i)
+                
             
             if self.verbose:
                 logger.info('fit  {} model, get new weights'.format(i+1))
-            weights = self.get_weights(X, y, group_idx)
-            
+            #weights = self.get_weights(X, y, group_idx)
+            weights = weights * self.get_weights(X, y, group_idx)
+            weights = weights / weights.max()
         return
             
     def get_weights(self, X, y, group_idx):
@@ -1063,8 +1078,10 @@ class SGD_boosting(SGD):
         if self.verbose:
             logger.info('predict_proba: prediction with %i algoritms' % len(self._models))
         
-        return pred/norm 
-        
+        return pred/norm               
+
+
+
         
 class SGD_factors(SGD):
     """ 
@@ -1261,11 +1278,10 @@ class SGD_factors(SGD):
 
 def correct_pred(P, group_idx, y):
     """
-    P vector of the probability to win in group_idx
+    X matrix of the probability to win in group_idx
     y winners in group_idx
         
-    return vector length group_idx where True in full group_idx  if the  prediction of  winners are correct for this group_idx, 
-           and vector length unique group_idx where True if correct of the winner in this group_idx
+    return True in full group_idx  if the  prediction of  winners are correct for this group_idx
     """
     c_pred = np.full(P.shape, fill_value=False, dtype=bool)
     
@@ -1280,3 +1296,20 @@ def correct_pred(P, group_idx, y):
     c_pred_group = accum(strata, c_pred, 'first')
             
     return c_pred, c_pred_group
+
+def horse_number(group_idx):
+    
+    strata = strata_scale_down(group_idx)
+    
+    return unpack(strata, accum(strata, 1))  
+    
+def new_factors_array (X, mask):
+    
+    if X.ndim > 1 :
+        factors_new = np.zeros((X.shape[1], mask.shape[0]))
+        factors_new[:, mask] = X.T
+    else:
+        factors_new = np.zeros((mask.shape[0]))
+        factors_new[mask] = X
+        
+    return factors_new      
