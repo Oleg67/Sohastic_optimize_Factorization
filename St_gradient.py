@@ -755,7 +755,7 @@ class SGD(object):
     step <=  the learning step, default = 1e-3
     N_epoh <= the number of epohs, default = 10
     method <= the method of optimization such as {'Adam', 'AdaMax'), default = 'AdaMax'
-    rank <= for factorization model the rank of factorization, default = None
+    
     moment1 <=  the first moment, default = 0.9
     moment2 <=  the second moment, default = 0.99
     lmbd <=  the regularization constant, default = 10
@@ -768,8 +768,8 @@ class SGD(object):
     """
     
     
-    def __init__(self, coef = None, b_size=100, step=1e-3, N_epoh=10, method='AdaMax', 
-                    moment1=0.9, moment2=0.99, lmbd=10., max_iteration=100, reg ='L2',
+    def __init__(self, coef = None, b_size=100, step=1e-3, N_epoh=256, method='AdaMax', 
+                    moment1=0.9, moment2=0.99, lmbd=1., max_iteration=32, reg ='L2',
                     eps=1e-4,  min_weight_dist=1e-3, seed=None, verbose=False):
         
         self.coef = coef
@@ -825,17 +825,8 @@ class SGD(object):
         # MAIN LOOP
         for i in range(self.N_epoh):
             # random choice the events of b_size
-            if isinstance(self.b_size, int):
-                r_events = np.random.choice(events_list, size = self.b_size)
+            r_events = self.ch_events(events_list)
             
-            elif self.b_size == 'complex':
-                min_b_size = 10
-                b_size_i = np.linspace(min_b_size, len(events_list)/2, num =self.N_epoh).astype(int)
-                r_events = np.random.choice(events_list, size = b_size_i[i])
-            else:
-                _size = 0.8
-                r_events = np.random.choice(events_list, size =int(len(events_list)*_size))
-    
             mask = np.in1d(group_idx, r_events)
             X_train, y_train = X[mask,:], y[mask]
             strata, weight_t = group_idx[mask], weight[mask]
@@ -853,25 +844,9 @@ class SGD(object):
                     # get gradient with  Nesterov momemtum + L2 regularisation
                     _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, coef_N) + self.lmbd * coef_N # gradient and L2
                 
-                
-                last_grad = self.moment1 * last_grad + (1-self.moment1) * _grad_ # Update weight first moment estimate
                 t = i * self.max_iteration + iter_num
-                _last_grad_ = last_grad/(1 - np.power(self.moment1, t)) # Correct first moment estimate
-                if  self.method == 'AdaMax':
-                    std_grad = np.max(np.vstack((self.moment2 * std_grad, np.abs(_grad_))), axis =0) # Update weight second moment estimate 
-                    
-                    self.coef = self.coef -  self.step * _last_grad_/std_grad
-                elif self.method == 'Adam':
-                    std_grad = self.moment2 * std_grad + (1-self.moment2)* _grad_ * _grad_ # Update weight second moment estimate 
-                    _std_grad_ = std_grad/(1 - np.power(self.moment2, t)) # Correct second moment estimate
-                    
-                    self.coef = self.coef - self.step * _last_grad_/(np.square(_std_grad_) + self.eps)
-                else:
-                    logger.info('ERROR    : Method must be AdaMax or Adam')
-                    return
-
-                weight_dist = np.linalg.norm(last_grad, ord=2)/len(self.coef)
-                self.grad_norm [t] = weight_dist
+                
+                self.coef, weight_dist = self._update_coef(_grad_, last_grad, std_grad, t)
                 
                 if (weight_dist <= self.min_weight_dist) :
                     if self.verbose:
@@ -884,6 +859,33 @@ class SGD(object):
                 if not np.isfinite(self.coef).all():
                     logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
                     return
+                    
+    def _update_coef(self, grad, last_grad, std_grad, t):
+        """
+        update the coef by Adam, AdaMax method
+        """
+        last_grad = self.moment1 * last_grad + (1-self.moment1) * grad # Update weight first moment estimate
+                
+        _last_grad_ = last_grad/(1 - np.power(self.moment1, t)) # Correct first moment estimate
+        if  self.method == 'AdaMax':
+            std_grad = np.max(np.vstack((self.moment2 * std_grad, np.abs(grad))), axis =0) # Update weight second moment estimate 
+                    
+            coef = self.coef -  self.step * _last_grad_/std_grad
+            
+        elif self.method == 'Adam':
+            std_grad = self.moment2 * std_grad + (1-self.moment2)* _grad_ * _grad_ # Update weight second moment estimate 
+            _std_grad_ = std_grad/(1 - np.power(self.moment2, t)) # Correct second moment estimate
+                    
+            coef = self.coef - self.step * _last_grad_/(np.square(_std_grad_) + self.eps)
+            
+        else:
+            logger.info('ERROR    : Method must be AdaMax or Adam')
+            return
+
+        weight_dist = np.linalg.norm(last_grad, ord=2)/len(coef)
+        self.grad_norm [t] = weight_dist
+        
+        return coef, weight_dist
 
     def predict_proba(self, X, group_idx):
         """
@@ -929,6 +931,7 @@ class SGD(object):
         delta = (y - prob) * weight
             
         return -np.dot(delta, X)
+        
     
     def learning_plot(self):
         
@@ -937,20 +940,154 @@ class SGD(object):
         plt.legend()
         plt.show()
         print self.grad_norm[self.grad_norm> 0][-1]
+        
+    def ch_events(self, events_list):
+    
+        # random choice the events of b_size
+        if isinstance(self.b_size, int):
+            r_events = np.random.choice(events_list, size = self.b_size, replace=False)
+            
+        elif self.b_size == 'complex':
+            min_b_size = 10
+            b_size_i = np.linspace(min_b_size, len(events_list)/2, num =self.N_epoh).astype(int)
+            r_events = np.random.choice(events_list, size = b_size_i[i])
+        else:
+            _size = 0.8
+            r_events = np.random.choice(events_list, size =int(len(events_list)*_size), replace=False)
+        
+        return r_events
 
 class SGD_time(SGD):
+    """ 
+    Adam  Max optimization method for the Model
+    for each epoh run all events by batch size  =b_size
+    repeat for next epoh
     
-    def __init__(self, direction='forward', t_method='iter_time'):
+    coef <=  the initial parameters of the Model, default = None
+    b_size  <=  the batch size , { integer or None or 'coplex'}, default = 100
+    step <=  the learning step, default = 1e-3
+    N_epoh <= the number of epohs, default = 10
+    method <= the method of optimization such as {'Adam', 'AdaMax'), default = 'AdaMax'
+
+    moment1 <=  the first moment, default = 0.9
+    moment2 <=  the second moment, default = 0.99
+    lmbd <=  the regularization constant, default = 10
+    reg <= method regularization, default = L2
+    max_iteration <=  the maximum of iterations , default = 100
+    eps <=  approximantely zero , default = 1e-4
+    min_weight_dist <=  the distanse for covergence, default = 1e-3
+    seed <=  the random constant , default = None
+    verbose <=  flag debaging, default = False
+    """
+    defaults = SGD().__dict__
+    
+    def __init__(self, direction=False, **kwargs) :
         
-        super(SGD_time, self).__init__()
-        
-        self.t_method = t_method
+        for k, v in kwargs.items():
+            if k not in self.defaults:
+                raise TypeError("%s got an unexpected keyword argument '%s'" % (type(self).__name__, k))
+            self.defaults[k] = v
+        for k,v in self.defaults.items():
+            setattr(self, k, v)
+        """ 
+        Adam  Max optimization method for the Model
+        for each epoh run all events by batch size  =b_size
+        repeat for next epoh
+    
+        direction <= direction of run (True) from old to new
+                 (False) from new to old
+
+        """
         self.direction = direction
         
-    #if self.t_method == 'iter_time':
+    def ch_events(self, events_list, step):
+        # chooce the events for train
+        if self.direction:
+            r_events = events_list[self.b_size*(step-1): self.b_size*(step)]
+        else:
+            if step ==1:
+                r_events = events_list[-self.b_size*(step): ]
+            else:
+                r_events = events_list[-self.b_size*(step): -self.b_size*(step-1)]
+        return r_events
+                
+                
+ 
+    def fit(self, X, y, group_idx, weight=None):
+        """
+        build the parameters of model - coef [j]
+         
+        X <= train data as matrix [i,j] 
+        y <= train target as vector [i]
+        weight <= weights of events or samples [i]
+        group_idx <= group of rows in data  [i]      
+        """
+        #initial parameters
+        if self.coef is None:
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+        elif self.coef.shape[0] != X.shape[1]:
+            logger.info('The shape of coef is not the same as X  %i'%X.shape[1])
+            self.coef = np.random.normal(0, scale =1e-2, size =(X.shape[1]))
+        if weight is None:
+            weight = np.ones_like(y)
+        # first distance beetwene weight parameters
+        weight_dist = np.inf
+        # for repeating of results
+        np.random.seed(self.seed)
+        
+        
+        # FOR NESTEROV OPTIMIZATION
+        # last gradient value
+        last_grad = np.zeros_like(self.coef) 
+        # last gradient's variation value
+        std_grad = np.zeros_like(self.coef)
+        # unique events in data set
+        events_list = np.unique(group_idx)
+        
+        # Step
+        step_max = len (events_list)/self.b_size
+        # store of grad changes
+        self.grad_norm = np.zeros(step_max * self.N_epoh +1)
+       
+        
+        # Main loop
+        for  i_ep  in range(self.N_epoh):
+                
+            for _step in range(1, step_max +1):
             
-        def fit(self, X, y, group_idx, weight=None):
-            pass       
+                r_events = self.ch_events(events_list, _step) 
+                
+                mask = np.in1d(group_idx, r_events)
+                X_train, y_train = X[mask,:], y[mask]
+                strata, weight_t = group_idx[mask], weight[mask]
+       
+                strata = strata_scale_down(strata)
+                if self.verbose:
+                    logger.info('Fitting epoh %s' % (i+1))
+
+                coef_N = self.coef - self.step * self.moment1 * last_grad # for Nesterov momentum
+                if self.reg == 'L1':
+                     # get gradient with  Nesterov momemtum + L1 regularisation
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, coef_N) + self.lmbd * np.sign(coef_N) # gradient and L1
+                else: 
+                    # get gradient with  Nesterov momemtum + L2 regularisation
+                    _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, coef_N) + self.lmbd * coef_N # gradient and L2
+                
+                t =  i_ep * step_max + _step
+                
+                self.coef, weight_dist = self._update_coef(_grad_, last_grad, std_grad, t)
+                
+                if (weight_dist <= self.min_weight_dist) :
+                    if self.verbose:
+                        logger.info('Method Covariance:  distatnce {} epoh {}'.format(weight_dist, i_ep+1))
+                    break
+                if self.verbose:
+                    logger.info('Epoh {},  itaration {},  distatnce {}'.format(i_ep+1, _step, weight_dist))
+
+                if not np.isfinite(self.coef).all():
+                    logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
+                    return  
+
                 
 
 class SGD_boosting(SGD):
@@ -1094,7 +1231,7 @@ class SGD_factors(SGD):
     b_size  <=  the batch size , { integer or None or 'coplex'}, default = 100
     step <=  the learning step, default = 1e-3
     N_epoh <= the number of epohs, default = 10
-    method <= the method of optimization such as {'Adam', 'AdaMax'), default = 'AdaMax'
+    method <= the method of optimization such as {'Adam', 'AdaMax'events_list), default = 'AdaMax'
     rank <= for factorization model the rank of factorization, default = None
     moment1 <=  the first moment, default = 0.9
     moment2 <=  the second moment, default = 0.99
@@ -1165,17 +1302,8 @@ class SGD_factors(SGD):
         # MAIN LOOP
         for i in range(self.N_epoh):
             # random choice the events of b_size
-            if isinstance(self.b_size, int):
-                r_events = np.random.choice(events_list, size = self.b_size)
+            r_events = self.ch_events(events_list)
             
-            elif self.b_size == 'complex':
-                min_b_size = 10
-                b_size_i = np.linspace(min_b_size, len(events_list)/2, num =self.N_epoh).astype(int)
-                r_events = np.random.choice(events_list, size = b_size_i[i])
-            else:
-                _size = 0.8
-                r_events = np.random.choice(events_list, size =int(len(events_list)*_size))
-    
             mask = np.in1d(group_idx, r_events)
             X_train, y_train = X[mask,:], y[mask]
             strata, weight_t = group_idx[mask], weight[mask]
@@ -1197,26 +1325,9 @@ class SGD_factors(SGD):
                     # get gradient with  Nesterov momemtum + L2 regularisation
                     _grad_ = self.first_derivative(X_train, y_train, weight_t, strata, w, V) + self.lmbd * w_par_N # gradient and L2
                 
-                
-                last_grad = self.moment1 * last_grad + (1-self.moment1) * _grad_ # Update weight first moment estimate
                 t = i * self.max_iteration + iter_num
-                _last_grad_ = last_grad/(1 - np.power(self.moment1, t)) # Correct first moment estimate
-                if  self.method == 'AdaMax':
-                    std_grad = np.max(np.vstack((self.moment2 * std_grad, np.abs(_grad_))), axis =0) # Update weight second moment estimate 
-                    
-                    w_par = w_par -  self.step * _last_grad_/std_grad
-                    
-                elif self.method == 'Adam':
-                    std_grad = self.moment2 * std_grad + (1-self.moment2)* _grad_ * _grad_ # Update weight second moment estimate 
-                    _std_grad_ = std_grad/(1 - np.power(self.moment2, t)) # Correct second moment estimate
-                    
-                    w_par = w_par - self.step * _last_grad_/(np.square(_std_grad_) + self.eps)
-                else:
-                    logger.info('ERROR    : Method must be AdaMax or Adam')
-                    return
 
-                weight_dist = np.linalg.norm(last_grad, ord=2)/len(w_par)
-                self.grad_norm [t] = weight_dist
+                w_par, weight_dist = self._update_coef(_grad_, last_grad, std_grad, t)
                 
                 if (weight_dist <= self.min_weight_dist) :
                     if self.verbose:
@@ -1226,7 +1337,7 @@ class SGD_factors(SGD):
                 if self.verbose:
                     logger.info('Epoh {},  itaration {},  distatnce {}'.format(i+1, iter_num, weight_dist))
 
-                if not np.isfinite(self.coef).all():
+                if not np.isfinite(w_par).all():
                     logger.info('ERROR : fitting  overcome  the some coef is nan or inf')
                     return
         self.coef = w_par[:n] # return to original shape
